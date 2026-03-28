@@ -751,6 +751,13 @@ export default function App() {
     }
   }, [freeSpins, isSpinning, isFreeSpinMode, isAutoSpinning, showFreeSpinSummary, isTurbo]);
 
+  // Auto-collect free spin summary after 5s when autospin is active
+  useEffect(() => {
+    if (!showFreeSpinSummary || !isAutoSpinning) return;
+    const timer = setTimeout(() => setShowFreeSpinSummary(false), 5000);
+    return () => clearTimeout(timer);
+  }, [showFreeSpinSummary, isAutoSpinning]);
+
   return (
     <div className="h-[100dvh] flex flex-col font-sans relative overflow-hidden bg-[#0a0a0a]">
       {/* Auth Overlay */}
@@ -1694,12 +1701,15 @@ export default function App() {
                   </span>
                 </div>
 
-                <button 
+                <button
                   onClick={() => setShowFreeSpinSummary(false)}
                   className="w-full py-4 bg-gradient-to-r from-yellow-400 to-yellow-500 hover:from-yellow-300 hover:to-yellow-400 text-purple-900 font-black rounded-2xl transition-all uppercase text-sm tracking-widest shadow-lg active:scale-95"
                 >
                   Collect
                 </button>
+                {isAutoSpinning && (
+                  <p className="text-white/30 text-[10px] font-bold uppercase tracking-widest">Auto-collecting in 5s...</p>
+                )}
               </div>
             </motion.div>
           </motion.div>
