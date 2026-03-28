@@ -303,31 +303,18 @@ export default function App() {
   const [showInsufficientCredits, setShowInsufficientCredits] = useState(false);
   const [isBetError, setIsBetError] = useState(false);
   const [leaderboardTab, setLeaderboardTab] = useState<'allTime' | 'thisWeek'>('allTime');
-  const [dailyClaimed, setDailyClaimed] = useState(false);
-  const [weeklyClaimed, setWeeklyClaimed] = useState(false);
-
-  useEffect(() => {
-    if (userStats) {
-      const now = new Date().toISOString().split('T')[0];
-      setDailyClaimed(userStats.daily_reward_date === now);
-      
-      const lastWeekly = userStats.weekly_reward_date ? new Date(userStats.weekly_reward_date) : null;
-      const oneWeekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
-      setWeeklyClaimed(lastWeekly && lastWeekly > oneWeekAgo);
-    }
-  }, [userStats]);
+  const dailyClaimed = userStats ? userStats.daily_reward_date === new Date().toISOString().split('T')[0] : false;
+  const weeklyClaimed = userStats?.weekly_reward_date
+    ? new Date(userStats.weekly_reward_date) > new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)
+    : false;
 
   const claimDaily = async () => {
     if (dailyClaimed || !token) return;
     try {
-      const res = await fetch('/api/auth/claim-daily', {
+      await fetch('/api/auth/claim-daily', {
         method: 'POST',
-        headers: { 
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        }
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` }
       });
-      if (res.ok) setDailyClaimed(true);
     } catch (err) {
       console.error(err);
     }
@@ -336,14 +323,10 @@ export default function App() {
   const claimWeekly = async () => {
     if (weeklyClaimed || !token) return;
     try {
-      const res = await fetch('/api/stats/claim-weekly', {
+      await fetch('/api/stats/claim-weekly', {
         method: 'POST',
-        headers: { 
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        }
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` }
       });
-      if (res.ok) setWeeklyClaimed(true);
     } catch (err) {
       console.error(err);
     }
@@ -1203,9 +1186,9 @@ export default function App() {
                         disabled={weeklyClaimed}
                         className={cn(
                           "w-full py-4 md:py-5 px-8 rounded-full font-black text-base md:text-xl transition-all border-2",
-                          weeklyClaimed 
-                            ? "bg-white/5 border-white/10 text-white/20 cursor-not-allowed" 
-                            : "bg-purple-500 border-purple-400 text-white hover:bg-purple-400 hover:scale-[1.02] active:scale-95 shadow-[0_0_20px_rgba(168,85,247,0.3)]"
+                          weeklyClaimed
+                            ? "bg-white/5 border-white/10 text-white/20 cursor-not-allowed"
+                            : "bg-amber-500 border-amber-400 text-black hover:bg-amber-400 hover:scale-[1.02] active:scale-95 shadow-[0_0_20px_rgba(245,158,11,0.3)]"
                         )}
                       >
                         {weeklyClaimed ? "Weekly Claimed" : "Weekly Reward (+$10,000)"}

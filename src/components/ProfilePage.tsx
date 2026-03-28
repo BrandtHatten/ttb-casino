@@ -188,19 +188,19 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({
                   disabled={isClaimingWeekly || hasClaimedWeekly}
                   className={cn(
                     "w-full p-4 rounded-2xl border flex items-center justify-between transition-all active:scale-95",
-                    hasClaimedWeekly 
-                      ? "bg-white/5 border-white/10 opacity-50 cursor-not-allowed" 
-                      : "bg-purple-500/10 border-purple-500/20 hover:bg-purple-500/20"
+                    hasClaimedWeekly
+                      ? "bg-white/5 border-white/10 opacity-50 cursor-not-allowed"
+                      : "bg-amber-500/10 border-amber-500/20 hover:bg-amber-500/20"
                   )}
                 >
                   <div className="flex items-center gap-3">
-                    <Trophy className={cn("w-5 h-5", hasClaimedWeekly ? "text-white/20" : "text-purple-500")} />
+                    <Trophy className={cn("w-5 h-5", hasClaimedWeekly ? "text-white/20" : "text-amber-500")} />
                     <div className="text-left">
                       <span className="text-[10px] font-black text-white/20 uppercase tracking-widest block">Weekly Reward</span>
                       <span className="text-sm font-bold text-white">$10,000</span>
                     </div>
                   </div>
-                  <span className={cn("text-[10px] font-black uppercase tracking-widest", hasClaimedWeekly ? "text-white/20" : "text-purple-500")}>
+                  <span className={cn("text-[10px] font-black uppercase tracking-widest", hasClaimedWeekly ? "text-white/20" : "text-amber-500")}>
                     {hasClaimedWeekly ? 'CLAIMED' : 'CLAIM'}
                   </span>
                 </button>
