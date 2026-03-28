@@ -1647,6 +1647,158 @@ function generatePlinkoPath(rows: number) {
     socket.on("bj:double", () => { const err = bjTable.double(userId); if (err) socket.emit('error', err); });
     socket.on("bj:split", () => { const err = bjTable.split(userId); if (err) socket.emit('error', err); });
 
+    // --- Mines Handlers ---
+    socket.on("mines:start", (data: { betAmount: number, mineCount: number }) => {
+      try {
+        const { betAmount } = data;
+        if (betAmount <= 0) return socket.emit("error", "Invalid bet");
+        const user = getUser(userId) as any;
+        if (!user || user.credits < betAmount) return socket.emit("error", "Insufficient credits");
+        adjustCredits(userId, -betAmount, "mines:bet");
+        checkJackpot(userId, socket.user.username, betAmount, 'mines');
+        const updatedUser = getUser(userId) as any;
+        socket.emit("user_data", updatedUser);
+      } catch (err: any) {
+        socket.emit("error", err.message);
+      }
+    });
+
+    socket.on("mines:cashout", (data: { multiplier: number, winAmount: number, betAmount: number }) => {
+      try {
+        const { winAmount, betAmount } = data;
+        adjustCredits(userId, winAmount, "mines:win");
+        updateStats(userId, { mines_wins: 1 });
+        const net = winAmount - betAmount;
+        const activity = {
+          id: Math.random().toString(36).substr(2, 9),
+          username: socket.user.username,
+          amount: Math.abs(net),
+          type: 'win',
+          game: 'Mines',
+          timestamp: Date.now(),
+        };
+        activityHistory.unshift(activity);
+        if (activityHistory.length > 50) activityHistory.pop();
+        io.emit("activity:new", activity);
+        const updatedUser = getUser(userId) as any;
+        socket.emit("user_data", updatedUser);
+        broadcastLeaderboards();
+        checkAchievements(userId);
+      } catch (err: any) {
+        socket.emit("error", err.message);
+      }
+    });
+
+    socket.on("mines:lost", (data: { id: number, betAmount: number }) => {
+      try {
+        const { betAmount } = data;
+        const activity = {
+          id: Math.random().toString(36).substr(2, 9),
+          username: socket.user.username,
+          amount: betAmount,
+          type: 'loss',
+          game: 'Mines',
+          timestamp: Date.now(),
+        };
+        activityHistory.unshift(activity);
+        if (activityHistory.length > 50) activityHistory.pop();
+        io.emit("activity:new", activity);
+        const updatedUser = getUser(userId) as any;
+        socket.emit("user_data", updatedUser);
+        checkAchievements(userId);
+      } catch (err: any) {
+        socket.emit("error", err.message);
+      }
+    });
+
+    // --- War Handlers ---
+    socket.on("war:bet", (data: { betAmount: number }) => {
+      try {
+        const { betAmount } = data;
+        if (betAmount <= 0) return socket.emit("error", "Invalid bet");
+        const user = getUser(userId) as any;
+        if (!user || user.credits < betAmount) return socket.emit("error", "Insufficient credits");
+        adjustCredits(userId, -betAmount, "war:bet");
+        checkJackpot(userId, socket.user.username, betAmount, 'war');
+        const updatedUser = getUser(userId) as any;
+        socket.emit("user_data", updatedUser);
+      } catch (err: any) {
+        socket.emit("error", err.message);
+      }
+    });
+
+    socket.on("war:result", (data: { betAmount: number, winAmount: number, won: boolean }) => {
+      try {
+        const { betAmount, winAmount, won } = data;
+        if (won && winAmount > 0) {
+          adjustCredits(userId, winAmount, "war:win");
+          updateStats(userId, { war_wins: 1 });
+        }
+        const net = won ? winAmount - betAmount : -betAmount;
+        const activity = {
+          id: Math.random().toString(36).substr(2, 9),
+          username: socket.user.username,
+          amount: Math.abs(net),
+          type: net > 0 ? 'win' : 'loss',
+          game: 'War',
+          timestamp: Date.now(),
+        };
+        activityHistory.unshift(activity);
+        if (activityHistory.length > 50) activityHistory.pop();
+        io.emit("activity:new", activity);
+        const updatedUser = getUser(userId) as any;
+        socket.emit("user_data", updatedUser);
+        broadcastLeaderboards();
+        checkAchievements(userId);
+      } catch (err: any) {
+        socket.emit("error", err.message);
+      }
+    });
+
+    // --- Wheel Handlers ---
+    socket.on("wheel:spin", (data: { betAmount: number }) => {
+      try {
+        const { betAmount } = data;
+        if (betAmount <= 0) return socket.emit("error", "Invalid bet");
+        const user = getUser(userId) as any;
+        if (!user || user.credits < betAmount) return socket.emit("error", "Insufficient credits");
+        adjustCredits(userId, -betAmount, "wheel:bet");
+        checkJackpot(userId, socket.user.username, betAmount, 'wheel');
+        const updatedUser = getUser(userId) as any;
+        socket.emit("user_data", updatedUser);
+      } catch (err: any) {
+        socket.emit("error", err.message);
+      }
+    });
+
+    socket.on("wheel:result", (data: { betAmount: number, multiplier: number, winAmount: number, won: boolean }) => {
+      try {
+        const { betAmount, multiplier, winAmount, won } = data;
+        if (won && winAmount > 0) {
+          adjustCredits(userId, winAmount, "wheel:win");
+          updateStats(userId, { max_wheel_multiplier: multiplier });
+        }
+        const net = won ? winAmount - betAmount : -betAmount;
+        const activity = {
+          id: Math.random().toString(36).substr(2, 9),
+          username: socket.user.username,
+          amount: Math.abs(net),
+          type: net > 0 ? 'win' : 'loss',
+          game: 'Wheel',
+          timestamp: Date.now(),
+        };
+        activityHistory.unshift(activity);
+        if (activityHistory.length > 50) activityHistory.pop();
+        io.emit("activity:new", activity);
+        const updatedUser = getUser(userId) as any;
+        socket.emit("user_data", updatedUser);
+        broadcastLeaderboards();
+        checkAchievements(userId);
+      } catch (err: any) {
+        socket.emit("error", err.message);
+      }
+    });
+
     socket.on("disconnect", () => {
       bjTable.leaveSeat(userId);
       if (userSockets.get(userId) === socket.id) {

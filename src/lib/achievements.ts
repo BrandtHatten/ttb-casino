@@ -1,4 +1,4 @@
-import { LucideIcon, Trophy, Star, Zap, Target, Crown, Gem, Coins, TrendingUp, Skull, Heart } from 'lucide-react';
+import { LucideIcon, Trophy, Star, Zap, Target, Crown, Gem, Coins, TrendingUp, Skull, Heart, Bomb, Sword, CircleDot } from 'lucide-react';
 
 export interface Achievement {
   id: string;
@@ -113,5 +113,29 @@ export const ACHIEVEMENTS: Achievement[] = [
     icon: Crown,
     color: 'text-purple-500',
     requirement: (stats) => stats.max_roulette_win >= 100000
+  },
+  {
+    id: 'minefield_navigator',
+    title: 'Minefield Navigator',
+    description: 'Successfully cash out 10 times in Mines',
+    icon: Bomb,
+    color: 'text-emerald-400',
+    requirement: (stats) => stats.mines_wins >= 10
+  },
+  {
+    id: 'war_hero',
+    title: 'War Hero',
+    description: 'Win 25 rounds of Casino War',
+    icon: Sword,
+    color: 'text-red-400',
+    requirement: (stats) => stats.war_wins >= 25
+  },
+  {
+    id: 'wheel_winner',
+    title: 'Wheel Winner',
+    description: 'Land on a 10x or higher segment in Wheel',
+    icon: CircleDot,
+    color: 'text-purple-400',
+    requirement: (stats) => stats.max_wheel_multiplier >= 10
   }
 ];

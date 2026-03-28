@@ -31,7 +31,10 @@ db.exec(`
     interest_claims INTEGER DEFAULT 0,
     roulette_wins INTEGER DEFAULT 0,
     roulette_straight_wins INTEGER DEFAULT 0,
-    max_roulette_win REAL DEFAULT 0.0
+    max_roulette_win REAL DEFAULT 0.0,
+    mines_wins INTEGER DEFAULT 0,
+    war_wins INTEGER DEFAULT 0,
+    max_wheel_multiplier REAL DEFAULT 0.0
   );
 
   CREATE TABLE IF NOT EXISTS transactions (
@@ -96,6 +99,15 @@ if (!columns.includes('roulette_straight_wins')) {
 }
 if (!columns.includes('max_roulette_win')) {
   db.exec("ALTER TABLE users ADD COLUMN max_roulette_win REAL DEFAULT 0.0");
+}
+if (!columns.includes('mines_wins')) {
+  db.exec("ALTER TABLE users ADD COLUMN mines_wins INTEGER DEFAULT 0");
+}
+if (!columns.includes('war_wins')) {
+  db.exec("ALTER TABLE users ADD COLUMN war_wins INTEGER DEFAULT 0");
+}
+if (!columns.includes('max_wheel_multiplier')) {
+  db.exec("ALTER TABLE users ADD COLUMN max_wheel_multiplier REAL DEFAULT 0.0");
 }
 
 export const getUser = (id: string) => {
@@ -193,7 +205,10 @@ export const updateStats = (userId: string, stats: Partial<{
   interest_claims: number,
   roulette_wins: number,
   roulette_straight_wins: number,
-  max_roulette_win: number
+  max_roulette_win: number,
+  mines_wins: number,
+  war_wins: number,
+  max_wheel_multiplier: number
 }>) => {
   const updates = Object.entries(stats).map(([key, value]) => {
     if (key.startsWith('max_')) {

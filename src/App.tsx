@@ -63,6 +63,9 @@ const PlinkoGame = lazy(() => import('./components/PlinkoGame').then(m => ({ def
 const CaseOpening = lazy(() => import('./components/CaseOpening').then(m => ({ default: m.CaseOpening })));
 const Blackjack = lazy(() => import('./components/Blackjack'));
 const RouletteGame = lazy(() => import('./components/RouletteGame'));
+const MinesGame = lazy(() => import('./components/games/Mines/MinesGame').then(m => ({ default: m.MinesGame })));
+const WarGame = lazy(() => import('./components/games/War/WarGame').then(m => ({ default: m.WarGame })));
+const WheelGame = lazy(() => import('./components/games/Wheel/WheelGame').then(m => ({ default: m.WheelGame })));
 
 const SYMBOL_ICONS: Record<SymbolType, any> = {
   HEART: Heart,
@@ -81,7 +84,7 @@ const SYMBOL_ICONS: Record<SymbolType, any> = {
 export default function App() {
   const navigate = useNavigate();
   const location = useLocation();
-  const pathToView: Record<string, 'home' | 'game' | 'crash' | 'plinko' | 'cases' | 'blackjack' | 'roulette' | 'profile' | 'settings' | 'admin'> = {
+  const pathToView: Record<string, 'home' | 'game' | 'crash' | 'plinko' | 'cases' | 'blackjack' | 'roulette' | 'mines' | 'war' | 'wheel' | 'profile' | 'settings' | 'admin'> = {
     '/': 'home',
     '/slots': 'game',
     '/crash': 'crash',
@@ -89,6 +92,9 @@ export default function App() {
     '/cases': 'cases',
     '/blackjack': 'blackjack',
     '/roulette': 'roulette',
+    '/mines': 'mines',
+    '/war': 'war',
+    '/wheel': 'wheel',
     '/profile': 'profile',
     '/settings': 'settings',
     '/admin': 'admin',
@@ -96,6 +102,7 @@ export default function App() {
   const viewToPath: Record<string, string> = {
     home: '/', game: '/slots', crash: '/crash', plinko: '/plinko',
     cases: '/cases', blackjack: '/blackjack', roulette: '/roulette',
+    mines: '/mines', war: '/war', wheel: '/wheel',
     profile: '/profile', settings: '/settings', admin: '/admin',
   };
   const publicProfileMatch = location.pathname.match(/^\/profile\/(.+)$/);
@@ -1145,6 +1152,57 @@ export default function App() {
               {userStats ? <RouletteGame socket={socket} user={userStats} /> : null}
             </div>
           </div>
+        ) : view === 'mines' ? (
+          <div className="flex-1 flex flex-col overflow-hidden bg-[#0a0a0a]">
+            <div className="flex items-center gap-3 px-6 py-3 border-b border-white/5 bg-black/40 shrink-0">
+              <button onClick={() => setView('home')} className="flex items-center gap-1.5 text-white/40 hover:text-white transition-colors text-xs font-bold uppercase tracking-widest">
+                <ArrowLeft className="w-4 h-4" /> Back
+              </button>
+              <span className="text-white/10">|</span>
+              <span className="text-xs font-black uppercase tracking-widest text-white">Mines</span>
+              <div onClick={() => setShowJackpotModal(true)} className="ml-auto bg-amber-500/10 border border-amber-500/30 px-2 md:px-3 py-1 rounded-full flex items-center gap-1 shrink-0 cursor-pointer hover:bg-amber-500/20 transition-colors">
+                <span className="text-amber-400 text-[8px] md:text-[10px] font-black uppercase tracking-widest hidden sm:block">JP</span>
+                <span className="font-mono font-bold text-[10px] md:text-sm whitespace-nowrap text-amber-300">${jackpot.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+              </div>
+            </div>
+            <div className="flex-1 flex flex-col overflow-hidden">
+              {userStats ? <MinesGame balance={balance} setBalance={setBalance} socket={socket} user={userStats} /> : null}
+            </div>
+          </div>
+        ) : view === 'war' ? (
+          <div className="flex-1 flex flex-col overflow-hidden bg-[#0a0a0a]">
+            <div className="flex items-center gap-3 px-6 py-3 border-b border-white/5 bg-black/40 shrink-0">
+              <button onClick={() => setView('home')} className="flex items-center gap-1.5 text-white/40 hover:text-white transition-colors text-xs font-bold uppercase tracking-widest">
+                <ArrowLeft className="w-4 h-4" /> Back
+              </button>
+              <span className="text-white/10">|</span>
+              <span className="text-xs font-black uppercase tracking-widest text-white">War</span>
+              <div onClick={() => setShowJackpotModal(true)} className="ml-auto bg-amber-500/10 border border-amber-500/30 px-2 md:px-3 py-1 rounded-full flex items-center gap-1 shrink-0 cursor-pointer hover:bg-amber-500/20 transition-colors">
+                <span className="text-amber-400 text-[8px] md:text-[10px] font-black uppercase tracking-widest hidden sm:block">JP</span>
+                <span className="font-mono font-bold text-[10px] md:text-sm whitespace-nowrap text-amber-300">${jackpot.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+              </div>
+            </div>
+            <div className="flex-1 flex flex-col overflow-hidden">
+              {userStats ? <WarGame balance={balance} setBalance={setBalance} socket={socket} user={userStats} /> : null}
+            </div>
+          </div>
+        ) : view === 'wheel' ? (
+          <div className="flex-1 flex flex-col overflow-hidden bg-[#0a0a0a]">
+            <div className="flex items-center gap-3 px-6 py-3 border-b border-white/5 bg-black/40 shrink-0">
+              <button onClick={() => setView('home')} className="flex items-center gap-1.5 text-white/40 hover:text-white transition-colors text-xs font-bold uppercase tracking-widest">
+                <ArrowLeft className="w-4 h-4" /> Back
+              </button>
+              <span className="text-white/10">|</span>
+              <span className="text-xs font-black uppercase tracking-widest text-white">Wheel</span>
+              <div onClick={() => setShowJackpotModal(true)} className="ml-auto bg-amber-500/10 border border-amber-500/30 px-2 md:px-3 py-1 rounded-full flex items-center gap-1 shrink-0 cursor-pointer hover:bg-amber-500/20 transition-colors">
+                <span className="text-amber-400 text-[8px] md:text-[10px] font-black uppercase tracking-widest hidden sm:block">JP</span>
+                <span className="font-mono font-bold text-[10px] md:text-sm whitespace-nowrap text-amber-300">${jackpot.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+              </div>
+            </div>
+            <div className="flex-1 flex flex-col overflow-hidden">
+              {userStats ? <WheelGame balance={balance} setBalance={setBalance} socket={socket} user={userStats} /> : null}
+            </div>
+          </div>
         ) : view === 'home' ? (
           <div className="flex-1 overflow-y-auto custom-scrollbar bg-[#0a0a0a]">
               <div className="min-h-full max-w-5xl mx-auto p-4 md:p-8 space-y-6 md:space-y-10 flex flex-col">
@@ -1246,6 +1304,9 @@ export default function App() {
                           { id: 'cases', title: 'Cases', view: 'cases' as const },
                           { id: 'blackjack', title: 'Blackjack', view: 'blackjack' as const },
                           { id: 'roulette', title: 'Roulette', view: 'roulette' as const },
+                          { id: 'mines', title: 'Mines', view: 'mines' as const },
+                          { id: 'war', title: 'War', view: 'war' as const },
+                          { id: 'wheel', title: 'Wheel', view: 'wheel' as const },
                         ].sort((a, b) => a.title.localeCompare(b.title)).map((game) => (
                           <button 
                             key={game.id}
