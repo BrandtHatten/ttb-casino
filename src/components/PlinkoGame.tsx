@@ -75,12 +75,15 @@ export const PlinkoGame: React.FC<PlinkoGameProps> = ({ socket, user }) => {
   const ballsRef = useRef<Ball[]>([]);
   const requestRef = useRef<number>();
   const lastAutoDropRef = useRef<number>(0);
+  const lastFrameTimeRef = useRef<number>(0);
 
   const PEG_RADIUS = 3;
   const BALL_RADIUS = 5;
   const GRAVITY = 0.35;
   const BOUNCE = 0.45;
   const FRICTION = 0.98;
+  const TARGET_FPS = 60;
+  const TARGET_FRAME_MS = 1000 / TARGET_FPS;
 
   const CANVAS_WIDTH = 800;
   const CANVAS_HEIGHT = 600;
@@ -190,11 +193,14 @@ export const PlinkoGame: React.FC<PlinkoGameProps> = ({ socket, user }) => {
     return () => clearInterval(interval);
   }, [isAutoRunning, mode, dropBall]);
 
-  const update = useCallback(() => {
+  const update = useCallback((timestamp: number) => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
+
+    const delta = lastFrameTimeRef.current ? Math.min((timestamp - lastFrameTimeRef.current) / TARGET_FRAME_MS, 3) : 1;
+    lastFrameTimeRef.current = timestamp;
 
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
@@ -253,8 +259,8 @@ export const PlinkoGame: React.FC<PlinkoGameProps> = ({ socket, user }) => {
     
     ballsRef.current.forEach(ball => {
       for (let s = 0; s < subSteps; s++) {
-        ball.vy += GRAVITY / subSteps;
-        ball.vx *= Math.pow(FRICTION, 1 / subSteps);
+        ball.vy += (GRAVITY * delta) / subSteps;
+        ball.vx *= Math.pow(FRICTION, delta / subSteps);
         
         // Target peg for current row
         const rowWidth = (ball.row - 1) * spacingX;
@@ -284,8 +290,8 @@ export const PlinkoGame: React.FC<PlinkoGameProps> = ({ socket, user }) => {
           ball.vx *= 0.98;
         }
 
-        ball.x += ball.vx / subSteps;
-        ball.y += ball.vy / subSteps;
+        ball.x += (ball.vx * delta) / subSteps;
+        ball.y += (ball.vy * delta) / subSteps;
 
         // Peg collision (only with target peg)
         if (ball.row <= rows) {
