@@ -14,7 +14,7 @@ A full-stack multiplayer casino platform featuring six games, real-time WebSocke
 ## Features
 
 - JWT authentication with bcrypt password hashing
-- 20 rank tiers (Bronze → Exotic) with daily login rewards
+- 20 rank tiers (Bronze → Platinum) with daily login rewards
 - 13 unlockable achievements
 - Progressive jackpot system
 - Real-time chat and live leaderboards
