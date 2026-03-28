@@ -33,7 +33,6 @@ A full-stack multiplayer casino platform featuring six games, real-time WebSocke
 ```bash
 npm install
 cp .env.example .env
-# Add your GEMINI_API_KEY to .env
 npm run dev
 ```
 
