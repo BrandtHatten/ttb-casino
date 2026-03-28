@@ -53,6 +53,7 @@ import { generateSymbol, generateInitialGrid, generateId } from './services/game
 import { getRank, getVIPBadge } from './lib/ranks';
 import { ACHIEVEMENTS, Achievement } from './lib/achievements';
 import { ProfilePage } from './components/ProfilePage';
+import { PublicProfilePage } from './components/PublicProfilePage';
 import { SettingsPage } from './components/SettingsPage';
 import { AdminPanel } from './components/AdminPanel';
 import { CrashGame } from './components/CrashGame';
@@ -95,8 +96,11 @@ export default function App() {
     cases: '/cases', blackjack: '/blackjack', roulette: '/roulette',
     profile: '/profile', settings: '/settings', admin: '/admin',
   };
-  const view = pathToView[location.pathname] ?? 'home';
+  const publicProfileMatch = location.pathname.match(/^\/profile\/(.+)$/);
+  const view = publicProfileMatch ? 'public_profile' : (pathToView[location.pathname] ?? 'home');
+  const viewedUsername = publicProfileMatch ? decodeURIComponent(publicProfileMatch[1]) : null;
   const setView = (v: string) => navigate(viewToPath[v] ?? '/');
+  const viewProfile = (username: string) => navigate(`/profile/${encodeURIComponent(username)}`);
   const [authView, setAuthView] = useState<'login' | 'register' | 'authenticated'>('login');
   const [token, setToken] = useState<string | null>(localStorage.getItem('casino_token'));
   const [isProfileDropdownOpen, setIsProfileDropdownOpen] = useState(false);
@@ -1037,10 +1041,12 @@ export default function App() {
           </div>
         </aside>
         <div className="flex-1 flex flex-col overflow-hidden">
-        {view === 'profile' ? (
-          <ProfilePage 
-            user={userStats} 
-            onGift={handleGift} 
+        {view === 'public_profile' && viewedUsername ? (
+          <PublicProfilePage username={viewedUsername} onBack={() => navigate(-1)} />
+        ) : view === 'profile' ? (
+          <ProfilePage
+            user={userStats}
+            onGift={handleGift}
             onClaimDaily={claimDaily}
             onClaimWeekly={claimWeekly}
             onClaimInterest={claimInterest}
@@ -1308,7 +1314,10 @@ export default function App() {
                                     <span className="text-white/20 font-mono text-xs">{i + 1}</span>
                                   )}
                                 </div>
-                                <span className="text-white font-bold text-sm group-hover:text-amber-500 transition-colors">
+                                <span
+                                  className={cn("font-bold text-sm transition-colors", user.username ? "text-white hover:text-amber-500 cursor-pointer" : "text-white/20")}
+                                  onClick={() => user.username && viewProfile(user.username)}
+                                >
                                   {user.username || '---'}
                                 </span>
                               </div>

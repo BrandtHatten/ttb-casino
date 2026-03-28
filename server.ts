@@ -628,6 +628,21 @@ async function startServer() {
     res.json({ amount: getJackpot() });
   });
 
+  app.get("/api/user/public/:username", (req, res) => {
+    const user = getUserByUsername(req.params.username) as any;
+    if (!user || user.is_banned) return res.status(404).json({ error: "User not found" });
+    const achievements = db.prepare('SELECT achievement_id, timestamp FROM user_achievements WHERE user_id = ?').all(user.id);
+    res.json({
+      username: user.username,
+      total_wagered: user.total_wagered || 0,
+      total_bets: user.total_bets || 0,
+      total_wins: user.total_wins || 0,
+      net_profit: user.net_profit || 0,
+      biggest_win: user.biggest_win || 0,
+      achievements,
+    });
+  });
+
   // --- Admin Endpoints ---
   app.get("/api/admin/users", authenticateToken, isAdmin, (req, res) => {
     const users = db.prepare('SELECT id, username, credits, total_wagered, is_admin, is_banned, total_bets, total_wins, net_profit, biggest_win FROM users').all();
