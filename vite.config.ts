@@ -15,9 +15,24 @@ export default defineConfig(({mode}) => {
         '@': path.resolve(__dirname, '.'),
       },
     },
+    build: {
+      rollupOptions: {
+        output: {
+          manualChunks: {
+            'vendor-react': ['react', 'react-dom', 'react-router-dom'],
+            'vendor-motion': ['framer-motion'],
+            'vendor-socket': ['socket.io-client'],
+            'game-crash': ['./src/components/CrashGame'],
+            'game-plinko': ['./src/components/PlinkoGame'],
+            'game-roulette': ['./src/components/RouletteGame'],
+            'game-blackjack': ['./src/components/Blackjack'],
+            'game-cases': ['./src/components/CaseOpening'],
+            'game-admin': ['./src/components/AdminPanel'],
+          },
+        },
+      },
+    },
     server: {
-      // HMR is disabled in AI Studio via DISABLE_HMR env var.
-      // Do not modifyâfile watching is disabled to prevent flickering during agent edits.
       hmr: process.env.DISABLE_HMR !== 'true',
     },
   };

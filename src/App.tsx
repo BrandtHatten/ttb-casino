@@ -52,15 +52,17 @@ import { Symbol } from './components/Symbol';
 import { generateSymbol, generateInitialGrid, generateId } from './services/gameService';
 import { getRank, getVIPBadge } from './lib/ranks';
 import { ACHIEVEMENTS, Achievement } from './lib/achievements';
-import { ProfilePage } from './components/ProfilePage';
-import { PublicProfilePage } from './components/PublicProfilePage';
-import { SettingsPage } from './components/SettingsPage';
-import { AdminPanel } from './components/AdminPanel';
-import { CrashGame } from './components/CrashGame';
-import { PlinkoGame } from './components/PlinkoGame';
-import { CaseOpening } from './components/CaseOpening';
-import Blackjack from './components/Blackjack';
-import RouletteGame from './components/RouletteGame';
+import { lazy, Suspense } from 'react';
+
+const ProfilePage = lazy(() => import('./components/ProfilePage').then(m => ({ default: m.ProfilePage })));
+const PublicProfilePage = lazy(() => import('./components/PublicProfilePage').then(m => ({ default: m.PublicProfilePage })));
+const SettingsPage = lazy(() => import('./components/SettingsPage').then(m => ({ default: m.SettingsPage })));
+const AdminPanel = lazy(() => import('./components/AdminPanel').then(m => ({ default: m.AdminPanel })));
+const CrashGame = lazy(() => import('./components/CrashGame').then(m => ({ default: m.CrashGame })));
+const PlinkoGame = lazy(() => import('./components/PlinkoGame').then(m => ({ default: m.PlinkoGame })));
+const CaseOpening = lazy(() => import('./components/CaseOpening').then(m => ({ default: m.CaseOpening })));
+const Blackjack = lazy(() => import('./components/Blackjack'));
+const RouletteGame = lazy(() => import('./components/RouletteGame'));
 
 const SYMBOL_ICONS: Record<SymbolType, any> = {
   HEART: Heart,
@@ -1031,6 +1033,7 @@ export default function App() {
           </div>
         </aside>
         <div className="flex-1 flex flex-col overflow-hidden">
+        <Suspense fallback={<div className="flex-1 flex items-center justify-center bg-[#0a0a0a] text-white/40 text-sm font-bold uppercase tracking-widest">Loading...</div>}>
         {view === 'public_profile' && viewedUsername ? (
           <PublicProfilePage username={viewedUsername} onBack={() => navigate(-1)} />
         ) : view === 'profile' ? (
@@ -1742,6 +1745,7 @@ export default function App() {
       </AnimatePresence>
           </div>
         )}
+        </Suspense>
         </div>
         {/* Right Sidebar: Online Players + Chat */}
         <aside className="hidden xl:flex w-80 flex-col border-l border-white/5 bg-black/40 backdrop-blur-xl shrink-0">
