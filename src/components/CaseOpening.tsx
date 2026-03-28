@@ -29,6 +29,7 @@ export const CaseOpening: React.FC<CaseOpeningProps> = ({ socket, user, updateCr
   useEffect(() => { turboModeRef.current = turboMode; }, [turboMode]);
 
   // Auto-bet state
+  const [sessionNet, setSessionNet] = useState(0);
   const [autobetEnabled, setAutobetEnabled] = useState(false);
   const [autobetRounds, setAutobetRounds] = useState('0'); // 0 = infinite
   const [autobetStopProfit, setAutobetStopProfit] = useState('');
@@ -153,6 +154,7 @@ export const CaseOpening: React.FC<CaseOpeningProps> = ({ socket, user, updateCr
           setTimeout(() => {
             setResults(data.results);
             setTotalWinnings(Math.round(data.totalWinnings * 100) / 100);
+            setSessionNet(prev => Math.round((prev + data.totalWinnings - betAmountRef.current * caseCountRef.current) * 100) / 100);
             updateCredits(data.newCredits);
             creditsRef.current = data.newCredits;
             setIsOpening(false);
@@ -290,6 +292,14 @@ export const CaseOpening: React.FC<CaseOpeningProps> = ({ socket, user, updateCr
               }
             </button>
           )}
+
+          {/* Session Net */}
+          <div className="bg-[#0f1923] rounded-xl px-3 py-2 flex items-center justify-between border border-white/5">
+            <span className="text-[10px] font-black text-white/30 uppercase tracking-widest">Session Net</span>
+            <span className={cn("text-sm font-mono font-black", sessionNet >= 0 ? "text-green-400" : "text-red-400")}>
+              {sessionNet >= 0 ? '+' : ''}${sessionNet.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            </span>
+          </div>
 
           {/* Turbo + Auto Bet toggles */}
           <div className="border-t border-white/5 pt-4 space-y-3">

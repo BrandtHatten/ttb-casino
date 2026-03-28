@@ -294,6 +294,7 @@ export default function App() {
   const [showFreeSpinSummary, setShowFreeSpinSummary] = useState(false);
   const [lastSpinTotal, setLastSpinTotal] = useState(0);
   const [showLastSpinTotal, setShowLastSpinTotal] = useState(false);
+  const [sessionNet, setSessionNet] = useState(0);
   const [isMultiplying, setIsMultiplying] = useState(false);
   const [showInsufficientCredits, setShowInsufficientCredits] = useState(false);
   const [isBetError, setIsBetError] = useState(false);
@@ -527,6 +528,7 @@ export default function App() {
         console.log(`Tumble sequence ended. Adding ${finalWin} to balance.`);
         setSpinWin(prev => prev + finalWin);
         setBalance(prev => Math.round((prev + finalWin) * 100) / 100);
+        setSessionNet(prev => Math.round((prev + finalWin) * 100) / 100);
 
         // Emit reveal to server to broadcast win
         if (socket) {
@@ -658,6 +660,7 @@ export default function App() {
     
     if (!isFreeSpinMode) {
       setBalance(prev => Math.round((prev - bet) * 100) / 100);
+      setSessionNet(prev => Math.round((prev - bet) * 100) / 100);
       setTotalScatterWin(0);
       setTotalFreeSpinWin(0);
       setShowFreeSpinSummary(false);
@@ -691,6 +694,7 @@ export default function App() {
     const cost = bet * 100;
     setShowBuyConfirm(false);
     setBalance(prev => Math.round((prev - cost) * 100) / 100);
+    setSessionNet(prev => Math.round((prev - cost) * 100) / 100);
     
     // Emit bet to server
     if (socket) {
@@ -1349,7 +1353,13 @@ export default function App() {
               <span className="text-amber-400 text-[8px] md:text-[10px] font-black uppercase tracking-widest hidden sm:block">JP</span>
               <span className="font-mono font-bold text-[10px] md:text-sm whitespace-nowrap text-amber-300">${jackpot.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
             </div>
-            
+            <div className="bg-black/60 border border-white/10 px-2 md:px-3 py-1 rounded-full flex items-center gap-1 md:gap-2 shrink-0 shadow-inner">
+              <span className="text-[8px] md:text-[10px] font-black text-white/30 uppercase tracking-widest hidden sm:block">Net</span>
+              <span className={`font-mono font-bold text-[10px] md:text-base whitespace-nowrap ${sessionNet >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                {sessionNet >= 0 ? '+' : ''}${sessionNet.toFixed(2)}
+              </span>
+            </div>
+
             <AnimatePresence mode="wait">
               {winAmount > 0 && (
                 <motion.div
