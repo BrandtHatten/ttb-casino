@@ -1051,6 +1051,9 @@ export default function App() {
         {view === 'public_profile' && viewedUsername ? (
           <PublicProfilePage username={viewedUsername} onBack={() => navigate(-1)} />
         ) : view === 'profile' ? (
+          !userStats ? (
+            <div className="flex-1 flex items-center justify-center bg-[#0a0a0a] text-white/40 text-sm font-bold uppercase tracking-widest">Loading...</div>
+          ) : (
           <ProfilePage
             user={userStats}
             onGift={handleGift}
@@ -1059,6 +1062,7 @@ export default function App() {
             onClaimInterest={claimInterest}
             userAchievements={userAchievements}
           />
+          )
         ) : view === 'admin' ? (
           <AdminPanel token={token || ''} />
         ) : view === 'settings' ? (
