@@ -6,11 +6,18 @@
 }
 
 @layer base {
-  html, body {
+  html {
+    background: #0a0a0a;
+  }
+  body {
     @apply bg-[#0a0a0a] text-white overflow-x-hidden;
     background: radial-gradient(circle at 50% 0%, #1a1a1a 0%, #0a0a0a 100%);
     -webkit-text-size-adjust: 100%;
     touch-action: manipulation;
+    padding-top: env(safe-area-inset-top);
+    padding-bottom: env(safe-area-inset-bottom);
+    padding-left: env(safe-area-inset-left);
+    padding-right: env(safe-area-inset-right);
   }
 
   /* Prevent iOS Safari zoom on input focus — inputs must be >= 16px */
