@@ -6,11 +6,19 @@
 }
 
 @layer base {
-  html, body {
-    @apply bg-[#0a0a0a] text-white overflow-x-hidden;
+  html {
+    background: #0a0a0a;
+  }
+  body {
+    @apply bg-[#0a0a0a] text-white;
     background: #0a0a0a;
     -webkit-text-size-adjust: 100%;
     touch-action: manipulation;
+    /* Body is slightly taller than viewport so Safari detects scroll */
+    height: calc(100svh + 1px);
+    overflow-y: scroll;
+    overflow-x: hidden;
+    -webkit-overflow-scrolling: touch;
   }
 
   #root {
@@ -19,15 +27,9 @@
     padding-left: env(safe-area-inset-left);
     padding-right: env(safe-area-inset-right);
     background: radial-gradient(circle at 50% 0%, #1a1a1a 0%, #0a0a0a 100%);
-    min-height: 100svh;
-  }
-
-  /* Spacer after root so the document is taller than the viewport,
-     which lets Safari collapse its URL / home bar on scroll */
-  #root::after {
-    content: '';
-    display: block;
-    height: 1px;
+    height: 100svh;
+    position: sticky;
+    top: 0;
   }
 
   /* Prevent iOS Safari zoom on input focus — inputs must be >= 16px */
