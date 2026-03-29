@@ -256,7 +256,7 @@ class BlackjackTable {
         else { result = 'loss'; }
         hand.result = result; hand.payout = payout; totalPayout += payout;
         if (result === 'win' || result === 'blackjack') {
-          try { this.processChallengeProgressFn(seat.userId, 'blackjack_win_count'); } catch {}
+          try { this.processChallengeProgressFn(seat.userId, 'blackjack_win_count'); } catch (e) { logError('bj:challenge_progress', e, { userId: seat.userId }); }
         }
       }
       const totalBet = seat.hands.reduce((s, h) => s + h.bet, 0);
@@ -296,7 +296,7 @@ class BlackjackTable {
       if (seat.userId !== userId) continue;
       if (this.phase === 'betting' && seat.hasBet) {
         const bet = seat.hands[0]?.bet || 0;
-        if (bet > 0) { try { this.adjustCreditsFn(userId, bet, 'blackjack:refund'); const sid = this.userSockets.get(userId); if (sid) this.io.to(sid).emit('user_data', this.getUserFn(userId)); } catch {} }
+        if (bet > 0) { try { this.adjustCreditsFn(userId, bet, 'blackjack:refund'); const sid = this.userSockets.get(userId); if (sid) this.io.to(sid).emit('user_data', this.getUserFn(userId)); } catch (e) { logError('bj:refund', e, { userId, bet }); } }
       }
       if (this.phase === 'playing' && this.turnSeatIndex === i) {
         if (this.actionInterval) clearInterval(this.actionInterval);
@@ -511,7 +511,8 @@ function calcSlotOutcome(bet: number, freeSpin = false, guaranteedScatters = 0):
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const JWT_SECRET = process.env.JWT_SECRET || "super-secret-casino-key";
+const JWT_SECRET = process.env.JWT_SECRET;
+if (!JWT_SECRET) throw new Error("JWT_SECRET environment variable is required");
 const ADMIN_USERNAME = process.env.ADMIN_USERNAME || "admin";
 const SERVER_VERSION = Date.now().toString();
 const MAX_BET = 100000;
@@ -1086,7 +1087,26 @@ async function startServer() {
   };
 
   // Broadcast every 30 seconds
-  setInterval(broadcastLeaderboards, 30000);
+  const leaderboardInterval = setInterval(broadcastLeaderboards, 30000);
+
+  // Safe helper: emit user_data only if user still exists
+  const emitUserData = (socket: any, userId: string) => {
+    const user = getUser(userId);
+    if (user) socket.emit('user_data', user);
+  };
+  const emitUserDataTo = (socketId: string, userId: string) => {
+    const user = getUser(userId);
+    if (user) io.to(socketId).emit('user_data', user);
+  };
+
+  // Graceful shutdown
+  const shutdown = () => {
+    clearInterval(leaderboardInterval);
+    io.close();
+    process.exit(0);
+  };
+  process.on('SIGTERM', shutdown);
+  process.on('SIGINT', shutdown);
 
   io.use((socket: any, next) => {
     const token = socket.handshake.auth.token;
@@ -1140,7 +1160,7 @@ async function startServer() {
         if (crashHistory.length > 20) crashHistory.pop();
 
         crashBets.forEach((bet, bUserId) => {
-          try { recordProvablyFair(bUserId, 'crash', `${pfRound}_${bUserId}`, pfSeed, pfSeedHash, 'house', JSON.stringify({ crashPoint: Number(crashMultiplier.toFixed(2)), betAmount: bet.betAmount, cashedOut: bet.cashedOut, payout: bet.payout })); } catch {}
+          try { recordProvablyFair(bUserId, 'crash', `${pfRound}_${bUserId}`, pfSeed, pfSeedHash, 'house', JSON.stringify({ crashPoint: Number(crashMultiplier.toFixed(2)), betAmount: bet.betAmount, cashedOut: bet.cashedOut, payout: bet.payout })); } catch (e) { logError('crash:provably_fair', e, { userId: bUserId, round: pfRound }); }
         });
         io.emit('crash:round_reveal', { roundId: pfRound, serverSeed: pfSeed });
         io.emit("crash:crashed", { multiplier: crashMultiplier, history: crashHistory });
@@ -1170,8 +1190,7 @@ async function startServer() {
           if (userSocketId) {
             const userSocket = io.sockets.sockets.get(userSocketId);
             if (userSocket) {
-              const updatedUser = getUser(bUserId) as any;
-              userSocket.emit("user_data", updatedUser);
+              emitUserData(userSocket, bUserId);
               userSocket.emit("crash:cashout_success", { payout, multiplier: bet.autoCashout });
             }
           }
@@ -1374,7 +1393,7 @@ async function startServer() {
           if (sid) io.to(sid).emit('challenge:progress', { challengeId: challenge.id, progress: row.progress, target: challenge.target_value });
         }
       }
-    } catch {}
+    } catch (e) { logError('challenge:progress', e, { userId }); }
   };
 
   // ============ END DAILY CHALLENGES ============
@@ -1626,7 +1645,7 @@ function generatePlinkoPath(rows: number) {
         }
 
         const pfRound = pfRoundId(); const pfSeed = pfGenSeed();
-        try { recordProvablyFair(userId, 'cases', pfRound, pfSeed, pfHash(pfSeed), `${userId}_${Date.now()}`, JSON.stringify({ results, totalWinnings, betAmount, count })); } catch {}
+        try { recordProvablyFair(userId, 'cases', pfRound, pfSeed, pfHash(pfSeed), `${userId}_${Date.now()}`, JSON.stringify({ results, totalWinnings, betAmount, count })); } catch (e) { logError('cases:provably_fair', e, { userId, round: pfRound }); }
 
         processChallengeProgress(userId, 'cases_open_count', count);
 
@@ -1680,7 +1699,7 @@ function generatePlinkoPath(rows: number) {
         const winnings = Math.round(betAmount * multiplier * 100) / 100;
 
         const pfRound = pfRoundId(); const pfSeed = pfGenSeed();
-        try { recordProvablyFair(userId, 'plinko', pfRound, pfSeed, pfHash(pfSeed), `${userId}_${Date.now()}`, JSON.stringify({ multiplier, winAmount: winnings, betAmount })); } catch {}
+        try { recordProvablyFair(userId, 'plinko', pfRound, pfSeed, pfHash(pfSeed), `${userId}_${Date.now()}`, JSON.stringify({ multiplier, winAmount: winnings, betAmount })); } catch (e) { logError('plinko:provably_fair', e, { userId, round: pfRound }); }
 
         if (multiplier >= 5) processChallengeProgress(userId, 'plinko_hit_5x');
 
@@ -1877,7 +1896,7 @@ function generatePlinkoPath(rows: number) {
         const pfRound = pfRoundId();
         const pfSeed = pfGenSeed();
         const pfSeedHash = pfHash(pfSeed);
-        try { recordProvablyFair(userId, 'slots', pfRound, pfSeed, pfSeedHash, `${userId}_${Date.now()}`, JSON.stringify({ totalWin: outcome.totalWin, betAmount: effectiveBet, isFreeSpin })); } catch {}
+        try { recordProvablyFair(userId, 'slots', pfRound, pfSeed, pfSeedHash, `${userId}_${Date.now()}`, JSON.stringify({ totalWin: outcome.totalWin, betAmount: effectiveBet, isFreeSpin })); } catch (e) { logError('slots:provably_fair', e, { userId, round: pfRound }); }
 
         if (outcome.totalWin > 0) {
           adjustCredits(userId, outcome.totalWin, isFreeSpin ? "slots:freespin_win" : "slots:win");
@@ -2416,7 +2435,7 @@ function generatePlinkoPath(rows: number) {
         if (multiplier >= 2) processChallengeProgress(userId, 'wheel_hit_2x');
 
         const pfRound = pfRoundId(); const pfSeed = pfGenSeed();
-        try { recordProvablyFair(userId, 'wheel', pfRound, pfSeed, pfHash(pfSeed), `${userId}_${Date.now()}`, JSON.stringify({ multiplier, betAmount, winAmount })); } catch {}
+        try { recordProvablyFair(userId, 'wheel', pfRound, pfSeed, pfHash(pfSeed), `${userId}_${Date.now()}`, JSON.stringify({ multiplier, betAmount, winAmount })); } catch (e) { logError('wheel:provably_fair', e, { userId, round: pfRound }); }
 
         const net = won ? winAmount - betAmount : -betAmount;
         const activity = {
@@ -2468,7 +2487,7 @@ function generatePlinkoPath(rows: number) {
             adjustCredits(opponentUserId, opponentBet, "war:pvp_refund");
             if (os) os.emit("user_data", getUser(opponentUserId));
             // Refund disconnecting player too — their credits are corrected for next login
-            try { adjustCredits(userId, disconnectorBet, "war:pvp_refund"); } catch {}
+            try { adjustCredits(userId, disconnectorBet, "war:pvp_refund"); } catch (e) { logError('war:pvp_refund', e, { userId, amount: disconnectorBet }); }
           }
           warRooms.delete(roomId);
           break;

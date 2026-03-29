@@ -52,7 +52,26 @@ import { Symbol } from './components/Symbol';
 import { generateSymbol, generateInitialGrid, generateId } from './services/gameService';
 import { getRank, getVIPBadge } from './lib/ranks';
 import { ACHIEVEMENTS, Achievement } from './lib/achievements';
-import { lazy, Suspense } from 'react';
+import { lazy, Suspense, Component, ErrorInfo, ReactNode } from 'react';
+
+class ErrorBoundary extends Component<{ fallback?: ReactNode; children: ReactNode }, { hasError: boolean }> {
+  state = { hasError: false };
+  static getDerivedStateFromError() { return { hasError: true }; }
+  componentDidCatch(error: Error, info: ErrorInfo) { console.error('Game component error:', error, info); }
+  render() {
+    if (this.state.hasError) {
+      return this.props.fallback || (
+        <div className="flex-1 flex flex-col items-center justify-center bg-[#0a0a0a] gap-4 p-8">
+          <p className="text-white/60 text-sm font-bold uppercase tracking-widest">Something went wrong</p>
+          <button onClick={() => this.setState({ hasError: false })} className="px-6 py-3 bg-white/10 hover:bg-white/20 text-white rounded-xl text-sm font-bold transition-colors">
+            Try Again
+          </button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
 
 const ProfilePage = lazy(() => import('./components/ProfilePage').then(m => ({ default: m.ProfilePage })));
 const PublicProfilePage = lazy(() => import('./components/PublicProfilePage').then(m => ({ default: m.PublicProfilePage })));
@@ -1072,6 +1091,7 @@ export default function App() {
           </div>
         </aside>
         <div className="flex-1 flex flex-col overflow-hidden">
+        <ErrorBoundary>
         <Suspense fallback={<div className="flex-1 flex items-center justify-center bg-[#0a0a0a] text-white/40 text-sm font-bold uppercase tracking-widest">Loading...</div>}>
         {view === 'public_profile' && viewedUsername ? (
           <PublicProfilePage username={viewedUsername} onBack={() => navigate(-1)} />
@@ -1842,6 +1862,7 @@ export default function App() {
           </div>
         )}
         </Suspense>
+        </ErrorBoundary>
         </div>
         {/* Right Sidebar: Online Players + Chat */}
         <aside className="hidden xl:flex w-80 flex-col border-l border-white/5 bg-black/40 backdrop-blur-xl shrink-0">
