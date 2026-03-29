@@ -13,6 +13,7 @@ import {
   getUserByUsername,
   adjustCredits,
   getJackpot,
+  getJackpotDollars,
   addToJackpot,
   resetJackpot,
   getLeaderboard,
@@ -35,7 +36,9 @@ import {
   getUserRecentRounds,
   getMostWageredThisWeek,
   getBiggestWinThisWeek,
-  getMostProfitableThisWeek
+  getMostProfitableThisWeek,
+  userToClient,
+  getUserTransactions,
 } from "./db.js";
 import db from "./db.js";
 import { getRank } from "./src/lib/ranks.js";
@@ -134,7 +137,7 @@ class BlackjackTable {
       dealerValue: this.phase === 'playing'
         ? calcBjHand(this.dealerCards.slice(0, 1)).total
         : calcBjHand(this.dealerCards).total,
-      seats: this.seats.map(s => ({ userId: s.userId, username: s.username, hasBet: s.hasBet, activeHandIndex: s.activeHandIndex, hands: s.hands }))
+      seats: this.seats.map(s => ({ userId: s.userId, username: s.username, hasBet: s.hasBet, activeHandIndex: s.activeHandIndex, hands: s.hands.map(h => ({ ...h, bet: h.bet / 100, payout: h.payout / 100 })) }))
     };
   }
 
@@ -249,7 +252,7 @@ class BlackjackTable {
         const pVal = calcBjHand(hand.cards).total;
         let payout = 0, result: BjHand['result'] = 'loss';
         if (hand.isBusted) { result = 'loss'; }
-        else if (hand.isBlackjack) { if (dBlackjack) { result = 'push'; payout = hand.bet; } else { result = 'blackjack'; payout = Math.round(hand.bet * 2.5 * 100) / 100; } }
+        else if (hand.isBlackjack) { if (dBlackjack) { result = 'push'; payout = hand.bet; } else { result = 'blackjack'; payout = Math.round(hand.bet * 2.5); } }
         else if (dBlackjack) { result = 'loss'; }
         else if (dBusted || pVal > dVal) { result = 'win'; payout = hand.bet * 2; }
         else if (pVal === dVal) { result = 'push'; payout = hand.bet; }
@@ -263,13 +266,13 @@ class BlackjackTable {
       if (totalPayout > 0) {
         this.adjustCreditsFn(seat.userId, totalPayout, 'blackjack:payout');
         const sid = this.userSockets.get(seat.userId);
-        if (sid) this.io.to(sid).emit('user_data', this.getUserFn(seat.userId));
+        if (sid) this.io.to(sid).emit('user_data', userToClient(this.getUserFn(seat.userId)));
       }
       const net = totalPayout - totalBet;
       if (net > 0) this.updateStatsFn(seat.userId, { blackjack_wins: 1 });
       this.checkAchievementsFn(seat.userId);
       if (net !== 0) {
-        const act = { id: Math.random().toString(36).substr(2, 9), username: seat.username, amount: Math.abs(net), type: net > 0 ? 'win' : 'loss', game: 'Blackjack', timestamp: Date.now() };
+        const act = { id: Math.random().toString(36).substr(2, 9), username: seat.username, amount: Math.abs(net) / 100, type: net > 0 ? 'win' : 'loss', game: 'Blackjack', timestamp: Date.now() };
         this.activityHistory.unshift(act);
         if (this.activityHistory.length > 50) this.activityHistory.pop();
         this.io.emit('activity:new', act);
@@ -296,7 +299,7 @@ class BlackjackTable {
       if (seat.userId !== userId) continue;
       if (this.phase === 'betting' && seat.hasBet) {
         const bet = seat.hands[0]?.bet || 0;
-        if (bet > 0) { try { this.adjustCreditsFn(userId, bet, 'blackjack:refund'); const sid = this.userSockets.get(userId); if (sid) this.io.to(sid).emit('user_data', this.getUserFn(userId)); } catch (e) { logError('bj:refund', e, { userId, bet }); } }
+        if (bet > 0) { try { this.adjustCreditsFn(userId, bet, 'blackjack:refund'); const sid = this.userSockets.get(userId); if (sid) this.io.to(sid).emit('user_data', userToClient(this.getUserFn(userId))); } catch (e) { logError('bj:refund', e, { userId, bet }); } }
       }
       if (this.phase === 'playing' && this.turnSeatIndex === i) {
         if (this.actionInterval) clearInterval(this.actionInterval);
@@ -310,20 +313,21 @@ class BlackjackTable {
     this.broadcast();
   }
 
-  placeBet(userId: string, amount: number): string | null {
+  placeBet(userId: string, amountDollars: number): string | null {
     if (this.phase !== 'betting') return 'Betting is closed';
-    if (amount < 0.01) return 'Minimum bet $0.01';
-    if (amount > 100000) return 'Maximum bet is $100,000';
+    if (amountDollars < 0.01) return 'Minimum bet $0.01';
+    if (amountDollars > 100000) return 'Maximum bet is $100,000';
+    const betCents = Math.round(amountDollars * 100);
     const seat = this.seats.find(s => s.userId === userId);
     if (!seat) return 'Not seated';
     if (seat.hasBet) return 'Already bet';
     try {
-      this.adjustCreditsFn(userId, -amount, 'blackjack:bet');
-      this.checkJackpotFn(userId, seat.username, amount, 'blackjack-table');
+      this.adjustCreditsFn(userId, -betCents, 'blackjack:bet');
+      this.checkJackpotFn(userId, seat.username, betCents, 'blackjack-table');
       seat.hasBet = true;
-      seat.hands = [{ cards: [], bet: amount, isFinished: false, isBusted: false, isBlackjack: false, isDoubled: false, isSplit: false, result: null, payout: 0 }];
+      seat.hands = [{ cards: [], bet: betCents, isFinished: false, isBusted: false, isBlackjack: false, isDoubled: false, isSplit: false, result: null, payout: 0 }];
       const sid = this.userSockets.get(userId);
-      if (sid) this.io.to(sid).emit('user_data', this.getUserFn(userId));
+      if (sid) this.io.to(sid).emit('user_data', userToClient(this.getUserFn(userId)));
       this.broadcast(); return null;
     } catch (err: any) { return err.message; }
   }
@@ -367,7 +371,7 @@ class BlackjackTable {
       if (total > 21) hand.isBusted = true;
       hand.isFinished = true;
       const sid = this.userSockets.get(userId);
-      if (sid) this.io.to(sid).emit('user_data', this.getUserFn(userId));
+      if (sid) this.io.to(sid).emit('user_data', userToClient(this.getUserFn(userId)));
       this.broadcast(); this.advanceTurn(); return null;
     } catch (err: any) { return err.message; }
   }
@@ -393,7 +397,7 @@ class BlackjackTable {
       if (t2 === 21) newHand.isFinished = true;
       seat.hands.splice(this.turnHandIndex + 1, 0, newHand);
       const sid = this.userSockets.get(userId);
-      if (sid) this.io.to(sid).emit('user_data', this.getUserFn(userId));
+      if (sid) this.io.to(sid).emit('user_data', userToClient(this.getUserFn(userId)));
       if (hand.isFinished) { this.broadcast(); this.advanceTurn(); }
       else { this.broadcast(); }
       return null;
@@ -505,7 +509,7 @@ function calcSlotOutcome(bet: number, freeSpin = false, guaranteedScatters = 0):
     }
     grid = ng;
   }
-  return { grid: initialGrid, totalWin: Math.round(totalWin * 100) / 100, freeSpinsTriggered, freeSpinCount };
+  return { grid: initialGrid, totalWin: Math.round(totalWin), freeSpinsTriggered, freeSpinCount };
 }
 // ============ END SLOTS RNG ============
 
@@ -515,7 +519,7 @@ const JWT_SECRET = process.env.JWT_SECRET;
 if (!JWT_SECRET) throw new Error("JWT_SECRET environment variable is required");
 const ADMIN_USERNAME = process.env.ADMIN_USERNAME || "admin";
 const SERVER_VERSION = Date.now().toString();
-const MAX_BET = 100000;
+const MAX_BET = 10_000_000; // $100,000 in cents
 const WHEEL_SEGMENTS: Record<string, number[]> = {
   low:    [1, 1.5, 1, 0, 1, 1.5, 1, 0, 1, 1.5],
   medium: [0, 1.5, 0, 2, 0, 3, 0, 5],
@@ -616,12 +620,12 @@ async function startServer() {
       return res.status(403).json({ error: "Account banned" });
     }
     const token = jwt.sign({ id: user.id, username: user.username, is_admin: user.is_admin }, JWT_SECRET, { expiresIn: '7d' });
-    res.json({ token, user: { id: user.id, username: user.username, credits: user.credits, is_admin: user.is_admin } });
+    res.json({ token, user: { id: user.id, username: user.username, credits: user.credits / 100, is_admin: user.is_admin } });
   });
 
   app.get("/api/auth/me", authenticateToken, (req: any, res) => {
     const user = getUser(req.user.id);
-    res.json(user);
+    res.json(userToClient(user));
   });
 
   app.post("/api/auth/claim-daily", bonusLimiter, authenticateToken, (req: any, res) => {
@@ -629,34 +633,35 @@ async function startServer() {
     const user = getUser(userId) as any;
     const now = new Date().toISOString().split('T')[0];
 
-    const rank = getRank(user.total_wagered);
-    const reward = rank.dailyReward;
+    const rank = getRank(user.total_wagered / 100); // getRank expects dollars
+    const rewardCents = rank.dailyReward * 100; // dailyReward is in dollars, convert to cents
 
-    const result = db.prepare('UPDATE users SET credits = credits + ?, daily_reward_date = ? WHERE id = ? AND (daily_reward_date IS NULL OR daily_reward_date != ?)').run(reward, now, userId, now);
+    const result = db.prepare('UPDATE users SET credits = credits + ?, daily_reward_date = ? WHERE id = ? AND (daily_reward_date IS NULL OR daily_reward_date != ?)').run(rewardCents, now, userId, now);
     if (result.changes === 0) {
       return res.status(400).json({ error: "Already claimed today" });
     }
     const updatedUser = getUser(userId);
-    
+
     // Notify all sockets for this user
     const socketId = userSockets.get(userId);
-    if (socketId) io.to(socketId).emit("user_data", updatedUser);
-    
+    if (socketId) io.to(socketId).emit("user_data", userToClient(updatedUser));
+
     checkAchievements(userId);
 
-    res.json({ message: "Daily reward claimed", user: updatedUser });
+    res.json({ message: "Daily reward claimed", user: userToClient(updatedUser) });
   });
 
   app.post("/api/user/gift", authenticateToken, (req: any, res) => {
-    const { targetUsername, amount } = req.body;
+    const { targetUsername, amount } = req.body; // amount in dollars from client
     const userId = req.user.id;
     const user = getUser(userId) as any;
+    const amountCents = Math.round(amount * 100);
 
     if (!targetUsername || !amount || amount <= 0) {
       return res.status(400).json({ error: "Invalid request" });
     }
 
-    if (user.credits < amount) {
+    if (user.credits < amountCents) {
       return res.status(400).json({ error: "Insufficient credits" });
     }
 
@@ -670,17 +675,17 @@ async function startServer() {
     }
 
     try {
-      adjustCredits(userId, -amount, `gift to ${targetUsername}`);
-      adjustCredits(targetUser.id, amount, `gift from ${user.username}`);
+      adjustCredits(userId, -amountCents, `gift to ${targetUsername}`);
+      adjustCredits(targetUser.id, amountCents, `gift from ${user.username}`);
 
       const updatedUser = getUser(userId);
       const updatedTarget = getUser(targetUser.id);
 
       const socketId = userSockets.get(userId);
-      if (socketId) io.to(socketId).emit("user_data", updatedUser);
+      if (socketId) io.to(socketId).emit("user_data", userToClient(updatedUser));
 
       const targetSocketId = userSockets.get(targetUser.id);
-      if (targetSocketId) io.to(targetSocketId).emit("user_data", updatedTarget);
+      if (targetSocketId) io.to(targetSocketId).emit("user_data", userToClient(updatedTarget));
 
       checkAchievements(userId);
       checkAchievements(targetUser.id);
@@ -706,11 +711,11 @@ async function startServer() {
     try {
       db.prepare('UPDATE users SET username = ? WHERE id = ?').run(newUsername, userId);
       const updatedUser = getUser(userId);
-      
-      const socketId = userSockets.get(userId);
-      if (socketId) io.to(socketId).emit("user_data", updatedUser);
 
-      res.json({ message: "Username updated", user: updatedUser });
+      const socketId = userSockets.get(userId);
+      if (socketId) io.to(socketId).emit("user_data", userToClient(updatedUser));
+
+      res.json({ message: "Username updated", user: userToClient(updatedUser) });
     } catch (err) {
       logError('POST /api/settings/username', err);
       res.status(400).json({ error: "Username already taken" });
@@ -741,12 +746,12 @@ async function startServer() {
     const todayStart = new Date(now).setUTCHours(0, 0, 0, 0);
     const lastClaim = user.interest_date ? parseInt(user.interest_date) : 0;
 
-    if (user.credits < 10000) {
+    if (user.credits < 1000000) { // $10,000 in cents
       return res.status(400).json({ error: "Minimum $10,000 balance required" });
     }
 
-    const interest = Math.round(user.credits * 0.01 * 100) / 100;
-    const interestResult = db.prepare('UPDATE users SET credits = credits + ?, interest_date = ?, interest_claims = interest_claims + 1 WHERE id = ? AND (interest_date IS NULL OR CAST(interest_date AS INTEGER) < ?)').run(interest, Date.now().toString(), userId, todayStart);
+    const interestCents = Math.round(user.credits * 0.01); // 1% of balance in cents
+    const interestResult = db.prepare('UPDATE users SET credits = credits + ?, interest_date = ?, interest_claims = interest_claims + 1 WHERE id = ? AND (interest_date IS NULL OR CAST(interest_date AS INTEGER) < ?)').run(interestCents, Date.now().toString(), userId, todayStart);
     if (interestResult.changes === 0) {
       const tomorrowStart = todayStart + 24 * 60 * 60 * 1000;
       const remaining = tomorrowStart - now.getTime();
@@ -757,11 +762,12 @@ async function startServer() {
     const updatedUser = getUser(userId);
 
     const socketId = userSockets.get(userId);
-    if (socketId) io.to(socketId).emit("user_data", updatedUser);
-    
+    if (socketId) io.to(socketId).emit("user_data", userToClient(updatedUser));
+
     checkAchievements(userId);
 
-    res.json({ message: `Interest of $${interest.toLocaleString()} claimed`, user: updatedUser });
+    const interestDollars = interestCents / 100;
+    res.json({ message: `Interest of $${interestDollars.toLocaleString()} claimed`, user: userToClient(updatedUser) });
   });
 
   app.post("/api/stats/claim-weekly", bonusLimiter, authenticateToken, (req: any, res) => {
@@ -773,20 +779,20 @@ async function startServer() {
     const lastClaim = user.weekly_reward_date ? new Date(user.weekly_reward_date) : null;
     const oneWeekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
 
-    const weeklyResult = db.prepare('UPDATE users SET credits = credits + 10000, weekly_reward_date = ? WHERE id = ? AND (weekly_reward_date IS NULL OR weekly_reward_date <= ?)').run(now.toISOString(), userId, oneWeekAgo.toISOString());
+    const weeklyResult = db.prepare('UPDATE users SET credits = credits + 1000000, weekly_reward_date = ? WHERE id = ? AND (weekly_reward_date IS NULL OR weekly_reward_date <= ?)').run(now.toISOString(), userId, oneWeekAgo.toISOString());
     if (weeklyResult.changes === 0) {
       return res.status(400).json({ error: "Weekly reward not available yet" });
     }
     const updatedUser = getUser(userId);
 
     const socketId = userSockets.get(userId);
-    if (socketId) io.to(socketId).emit("user_data", updatedUser);
+    if (socketId) io.to(socketId).emit("user_data", userToClient(updatedUser));
 
-    res.json({ message: "Weekly reward claimed", user: updatedUser });
+    res.json({ message: "Weekly reward claimed", user: userToClient(updatedUser) });
   });
 
   app.get("/api/jackpot", (req, res) => {
-    res.json({ amount: getJackpot() });
+    res.json({ amount: getJackpotDollars() });
   });
 
   app.get("/api/user/public/:username", (req, res) => {
@@ -795,11 +801,11 @@ async function startServer() {
     const achievements = db.prepare('SELECT achievement_id, timestamp FROM user_achievements WHERE user_id = ?').all(user.id);
     res.json({
       username: user.username,
-      total_wagered: user.total_wagered || 0,
+      total_wagered: (user.total_wagered || 0) / 100,
       total_bets: user.total_bets || 0,
       total_wins: user.total_wins || 0,
-      net_profit: user.net_profit || 0,
-      biggest_win: user.biggest_win || 0,
+      net_profit: (user.net_profit || 0) / 100,
+      biggest_win: (user.biggest_win || 0) / 100,
       achievements,
     });
   });
@@ -808,15 +814,8 @@ async function startServer() {
     const userId = req.user.id;
     const page = Math.max(1, parseInt(req.query.page as string) || 1);
     const limit = 25;
-    const offset = (page - 1) * limit;
     const filter = (req.query.filter as string) || 'all';
-    let where = 'WHERE user_id = ?';
-    const params: any[] = [userId];
-    if (filter === 'wins') where += ' AND amount > 0';
-    else if (filter === 'losses') where += ' AND amount < 0';
-    const total = (db.prepare(`SELECT COUNT(*) as cnt FROM transactions ${where}`).get(...params) as any).cnt;
-    const transactions = db.prepare(`SELECT * FROM transactions ${where} ORDER BY timestamp DESC LIMIT ? OFFSET ?`).all(...params, limit, offset);
-    res.json({ transactions, total, pages: Math.ceil(total / limit), page });
+    res.json(getUserTransactions(userId, page, limit, filter));
   });
 
   app.get("/api/provably_fair/user/recent", authenticateToken, (req: any, res) => {
@@ -831,22 +830,24 @@ async function startServer() {
 
   // --- Admin Endpoints ---
   app.get("/api/admin/users", authenticateToken, isAdmin, (req, res) => {
-    const users = db.prepare('SELECT id, username, credits, total_wagered, is_admin, is_banned, total_bets, total_wins, net_profit, biggest_win FROM users').all();
+    const users = db.prepare('SELECT id, username, credits, total_wagered, is_admin, is_banned, total_bets, total_wins, net_profit, biggest_win FROM users').all()
+      .map((u: any) => ({ ...u, credits: u.credits / 100, total_wagered: u.total_wagered / 100, net_profit: u.net_profit / 100, biggest_win: u.biggest_win / 100 }));
     res.json(users);
   });
 
   app.post("/api/admin/credits", authenticateToken, isAdmin, (req: any, res) => {
-    const { userId, amount, description } = req.body;
+    const { userId, amount, description } = req.body; // amount in dollars from admin UI
     const adminUsername = req.user.username;
+    const amountCents = Math.round(amount * 100);
     try {
-      db.prepare('UPDATE users SET credits = credits + ? WHERE id = ?').run(amount, userId);
-      db.prepare('INSERT INTO transactions (user_id, amount, balance_after, description) VALUES (?, ?, (SELECT credits FROM users WHERE id = ?), ?)').run(userId, amount, userId, description || `Admin adjustment by ${adminUsername}`);
-      
+      db.prepare('UPDATE users SET credits = credits + ? WHERE id = ?').run(amountCents, userId);
+      db.prepare('INSERT INTO transactions (user_id, amount, balance_after, description) VALUES (?, ?, (SELECT credits FROM users WHERE id = ?), ?)').run(userId, amountCents, userId, description || `Admin adjustment by ${adminUsername}`);
+
       const updatedUser = getUser(userId);
       const socketId = userSockets.get(userId);
-      if (socketId) io.to(socketId).emit("user_data", updatedUser);
-      
-      res.json({ message: "Credits adjusted", user: updatedUser });
+      if (socketId) io.to(socketId).emit("user_data", userToClient(updatedUser));
+
+      res.json({ message: "Credits adjusted", user: userToClient(updatedUser) });
     } catch (err: any) {
       logError('POST /api/admin/adjust-credits', err);
       res.status(500).json({ error: err.message });
@@ -854,21 +855,22 @@ async function startServer() {
   });
 
   app.post("/api/admin/set-credits", authenticateToken, isAdmin, (req: any, res) => {
-    const { userId, amount, description } = req.body;
+    const { userId, amount, description } = req.body; // amount in dollars from admin UI
     const adminUsername = req.user.username;
+    const amountCents = Math.round(amount * 100);
     try {
       db.transaction(() => {
         const current = (db.prepare('SELECT credits FROM users WHERE id = ?').get(userId) as any).credits;
-        const delta = amount - current;
-        db.prepare('UPDATE users SET credits = ? WHERE id = ?').run(amount, userId);
-        db.prepare('INSERT INTO transactions (user_id, amount, balance_after, description) VALUES (?, ?, ?, ?)').run(userId, delta, amount, description || `Admin set balance by ${adminUsername}`);
+        const delta = amountCents - current;
+        db.prepare('UPDATE users SET credits = ? WHERE id = ?').run(amountCents, userId);
+        db.prepare('INSERT INTO transactions (user_id, amount, balance_after, description) VALUES (?, ?, ?, ?)').run(userId, delta, amountCents, description || `Admin set balance by ${adminUsername}`);
       })();
-      
+
       const updatedUser = getUser(userId);
       const socketId = userSockets.get(userId);
-      if (socketId) io.to(socketId).emit("user_data", updatedUser);
-      
-      res.json({ message: "Credits set", user: updatedUser });
+      if (socketId) io.to(socketId).emit("user_data", userToClient(updatedUser));
+
+      res.json({ message: "Credits set", user: userToClient(updatedUser) });
     } catch (err: any) {
       logError('POST /api/admin/set-credits', err);
       res.status(500).json({ error: err.message });
@@ -880,8 +882,8 @@ async function startServer() {
     db.prepare('UPDATE users SET total_wagered = 0, total_bets = 0, total_wins = 0, net_profit = 0, biggest_win = 0 WHERE id = ?').run(userId);
     const updatedUser = getUser(userId);
     const socketId = userSockets.get(userId);
-    if (socketId) io.to(socketId).emit("user_data", updatedUser);
-    res.json({ message: "Stats reset", user: updatedUser });
+    if (socketId) io.to(socketId).emit("user_data", userToClient(updatedUser));
+    res.json({ message: "Stats reset", user: userToClient(updatedUser) });
   });
 
   app.post("/api/admin/reset-achievements", authenticateToken, isAdmin, (req, res) => {
@@ -937,7 +939,8 @@ async function startServer() {
     query += " ORDER BY t.timestamp DESC LIMIT ? OFFSET ?";
     params.push(limit, offset);
 
-    const transactions = db.prepare(query).all(...params);
+    const transactions = db.prepare(query).all(...params)
+      .map((t: any) => ({ ...t, amount: t.amount / 100, balance_after: t.balance_after / 100 }));
     res.json({ transactions, total: total.count, pages: Math.ceil(total.count / limit) });
   });
 
@@ -948,20 +951,21 @@ async function startServer() {
   });
 
   app.post("/api/admin/jackpot", authenticateToken, isAdmin, (req, res) => {
-    const { amount } = req.body;
-    db.prepare('UPDATE jackpot SET amount = ? WHERE id = 1').run(amount);
-    io.emit("jackpot:update", amount);
+    const { amount } = req.body; // dollars from admin UI
+    const amountCents = Math.round(amount * 100);
+    db.prepare('UPDATE jackpot SET amount = ? WHERE id = 1').run(amountCents);
+    io.emit("jackpot:update", amount); // send dollars to client
     res.json({ message: "Jackpot updated", amount });
   });
 
   app.post("/api/admin/site-reset", authenticateToken, isAdmin, (req, res) => {
     const reset = db.transaction(() => {
-      db.prepare('UPDATE users SET credits = 1000, total_wagered = 0, total_bets = 0, total_wins = 0, net_profit = 0, biggest_win = 0, daily_reward_date = NULL, weekly_reward_date = NULL, interest_date = NULL, interest_claims = 0').run();
+      db.prepare('UPDATE users SET credits = 100000, total_wagered = 0, total_bets = 0, total_wins = 0, net_profit = 0, biggest_win = 0, daily_reward_date = NULL, weekly_reward_date = NULL, interest_date = NULL, interest_claims = 0').run();
       db.prepare('DELETE FROM user_achievements').run();
       db.prepare('DELETE FROM user_free_spins').run();
       db.prepare('DELETE FROM user_challenge_progress').run();
       db.prepare('DELETE FROM transactions').run();
-      db.prepare('UPDATE jackpot SET amount = 2000 WHERE id = 1').run();
+      db.prepare('UPDATE jackpot SET amount = 200000 WHERE id = 1').run();
     });
     reset();
     io.emit("site_reset");
@@ -1062,12 +1066,14 @@ async function startServer() {
     const user = getUser(userId) as any;
     if (!user) return;
 
+    // Convert to dollars for achievement threshold checks (achievements.ts uses dollar values)
+    const userDollars = userToClient(user);
     const currentAchievements = getAchievements(userId).map((a: any) => a.achievement_id);
     const newlyAwarded = [];
 
     for (const achievement of ACHIEVEMENTS) {
       if (!currentAchievements.includes(achievement.id)) {
-        if (achievement.requirement(user)) {
+        if (achievement.requirement(userDollars)) {
           awardAchievement(userId, achievement.id);
           newlyAwarded.push(achievement);
         }
@@ -1089,14 +1095,14 @@ async function startServer() {
   // Broadcast every 30 seconds
   const leaderboardInterval = setInterval(broadcastLeaderboards, 30000);
 
-  // Safe helper: emit user_data only if user still exists
+  // Safe helper: emit user_data only if user still exists (converts to dollars for client)
   const emitUserData = (socket: any, userId: string) => {
     const user = getUser(userId);
-    if (user) socket.emit('user_data', user);
+    if (user) socket.emit('user_data', userToClient(user));
   };
   const emitUserDataTo = (socketId: string, userId: string) => {
     const user = getUser(userId);
-    if (user) io.to(socketId).emit('user_data', user);
+    if (user) io.to(socketId).emit('user_data', userToClient(user));
   };
 
   // Graceful shutdown
@@ -1126,6 +1132,7 @@ async function startServer() {
   let crashState: 'waiting' | 'running' | 'crashed' = 'waiting';
   let crashBets = new Map<string, { userId: string, betAmount: number, username: string, cashedOut: boolean, payout: number, autoCashout: number }>();
   let crashHistory: number[] = [];
+  const crashBetsDollars = () => Array.from(crashBets.values()).map(b => ({ ...b, betAmount: b.betAmount / 100, payout: b.payout / 100 }));
   let crashWaitTime = 8; // seconds to wait before starting
   let crashCurrentWait = 0;
   let crashPoints: { x: number, y: number }[] = [];
@@ -1160,7 +1167,7 @@ async function startServer() {
         if (crashHistory.length > 20) crashHistory.pop();
 
         crashBets.forEach((bet, bUserId) => {
-          try { recordProvablyFair(bUserId, 'crash', `${pfRound}_${bUserId}`, pfSeed, pfSeedHash, 'house', JSON.stringify({ crashPoint: Number(crashMultiplier.toFixed(2)), betAmount: bet.betAmount, cashedOut: bet.cashedOut, payout: bet.payout })); } catch (e) { logError('crash:provably_fair', e, { userId: bUserId, round: pfRound }); }
+          try { recordProvablyFair(bUserId, 'crash', `${pfRound}_${bUserId}`, pfSeed, pfSeedHash, 'house', JSON.stringify({ crashPoint: Number(crashMultiplier.toFixed(2)), betAmount: bet.betAmount / 100, cashedOut: bet.cashedOut, payout: bet.payout / 100 })); } catch (e) { logError('crash:provably_fair', e, { userId: bUserId, round: pfRound }); }
         });
         io.emit('crash:round_reveal', { roundId: pfRound, serverSeed: pfSeed });
         io.emit("crash:crashed", { multiplier: crashMultiplier, history: crashHistory });
@@ -1180,10 +1187,10 @@ async function startServer() {
       // Handle Auto Cashouts
       crashBets.forEach((bet, bUserId) => {
         if (!bet.cashedOut && bet.autoCashout > 1 && crashMultiplier >= bet.autoCashout) {
-          const payout = Math.round(bet.betAmount * bet.autoCashout * 100) / 100;
-          adjustCredits(bUserId, payout, "crash:win");
+          const payoutCents = Math.round(bet.betAmount * bet.autoCashout);
+          adjustCredits(bUserId, payoutCents, "crash:win");
           bet.cashedOut = true;
-          bet.payout = payout;
+          bet.payout = payoutCents;
           if (bet.autoCashout >= 3) processChallengeProgress(bUserId, 'crash_cashout_3x');
 
           const userSocketId = userSockets.get(bUserId);
@@ -1191,10 +1198,10 @@ async function startServer() {
             const userSocket = io.sockets.sockets.get(userSocketId);
             if (userSocket) {
               emitUserData(userSocket, bUserId);
-              userSocket.emit("crash:cashout_success", { payout, multiplier: bet.autoCashout });
+              userSocket.emit("crash:cashout_success", { payout: payoutCents / 100, multiplier: bet.autoCashout });
             }
           }
-          io.emit("crash:bets_update", Array.from(crashBets.values()));
+          io.emit("crash:bets_update", crashBetsDollars());
         }
       });
 
@@ -1231,6 +1238,7 @@ async function startServer() {
   let rouletteState: 'waiting' | 'spinning' | 'result' = 'waiting';
   let rouletteBets = new Map<string, { userId: string, betAmount: number, username: string, type: string, value: any }>();
   let rouletteHistory: { number: number, color: string }[] = [];
+  const rouletteBetsDollars = () => Array.from(rouletteBets.values()).map(b => ({ ...b, betAmount: b.betAmount / 100 }));
   let rouletteWaitTime = 10; // seconds to wait before starting
   let rouletteCurrentWait = 0;
   let lastRouletteResult: { number: number, color: string } | null = null;
@@ -1274,33 +1282,32 @@ async function startServer() {
         }
 
         if (win) {
-          const winnings = Math.round(bet.betAmount * multiplier * 100) / 100;
-          adjustCredits(bet.userId, winnings, "roulette:win");
+          const winningsCents = Math.round(bet.betAmount * multiplier);
+          adjustCredits(bet.userId, winningsCents, "roulette:win");
           updateStats(bet.userId, {
             roulette_wins: 1,
-            max_roulette_win: winnings,
+            max_roulette_win: winningsCents,
             ...(isStraight ? { roulette_straight_wins: 1 } : {})
           });
           processChallengeProgress(bet.userId, 'roulette_win_count');
-          
+
           const userSocketId = userSockets.get(bet.userId);
           if (userSocketId) {
             const userSocket = io.sockets.sockets.get(userSocketId);
             if (userSocket) {
-              const updatedUser = getUser(bet.userId) as any;
-              userSocket.emit("user_data", updatedUser);
-              userSocket.emit("roulette:win_success", { winnings });
+              userSocket.emit("user_data", userToClient(getUser(bet.userId)));
+              userSocket.emit("roulette:win_success", { winnings: winningsCents / 100 });
             }
           }
           checkAchievements(bet.userId);
         }
       });
 
-      io.emit("roulette:result", { 
-        number: resultNumber, 
-        color, 
+      io.emit("roulette:result", {
+        number: resultNumber,
+        color,
         history: rouletteHistory,
-        bets: Array.from(rouletteBets.values())
+        bets: rouletteBetsDollars()
       });
 
       // Wait and restart
@@ -1336,14 +1343,14 @@ async function startServer() {
 
   // ============ DAILY CHALLENGES ============
   const CHALLENGE_POOL = [
-    { key: 'crash_3x', description: 'Cash out at 3x or higher on Crash', target_type: 'crash_cashout_3x', target_value: 1, reward: 500 },
-    { key: 'cases_5', description: 'Open 5 Cases', target_type: 'cases_open_count', target_value: 5, reward: 300 },
-    { key: 'bj_win', description: 'Win a hand at Blackjack', target_type: 'blackjack_win_count', target_value: 1, reward: 200 },
-    { key: 'plinko_5x', description: 'Hit a 5x multiplier or higher on Plinko', target_type: 'plinko_hit_5x', target_value: 1, reward: 400 },
-    { key: 'slots_fs', description: 'Trigger Free Spins in Slots', target_type: 'slots_free_spins', target_value: 1, reward: 350 },
-    { key: 'roulette_win', description: 'Win a Roulette bet', target_type: 'roulette_win_count', target_value: 1, reward: 150 },
-    { key: 'mines_3', description: 'Reveal 3 or more gems in a single Mines game', target_type: 'mines_gems_revealed', target_value: 3, reward: 250 },
-    { key: 'wheel_2x', description: 'Land a 2x or higher multiplier on the Wheel', target_type: 'wheel_hit_2x', target_value: 1, reward: 175 },
+    { key: 'crash_3x', description: 'Cash out at 3x or higher on Crash', target_type: 'crash_cashout_3x', target_value: 1, reward: 50000 },
+    { key: 'cases_5', description: 'Open 5 Cases', target_type: 'cases_open_count', target_value: 5, reward: 30000 },
+    { key: 'bj_win', description: 'Win a hand at Blackjack', target_type: 'blackjack_win_count', target_value: 1, reward: 20000 },
+    { key: 'plinko_5x', description: 'Hit a 5x multiplier or higher on Plinko', target_type: 'plinko_hit_5x', target_value: 1, reward: 40000 },
+    { key: 'slots_fs', description: 'Trigger Free Spins in Slots', target_type: 'slots_free_spins', target_value: 1, reward: 35000 },
+    { key: 'roulette_win', description: 'Win a Roulette bet', target_type: 'roulette_win_count', target_value: 1, reward: 15000 },
+    { key: 'mines_3', description: 'Reveal 3 or more gems in a single Mines game', target_type: 'mines_gems_revealed', target_value: 3, reward: 25000 },
+    { key: 'wheel_2x', description: 'Land a 2x or higher multiplier on the Wheel', target_type: 'wheel_hit_2x', target_value: 1, reward: 17500 },
   ];
 
   const seedDailyChallenges = () => {
@@ -1380,13 +1387,12 @@ async function startServer() {
         if (!row) continue;
         if (row.progress >= challenge.target_value && row.completed < 1) {
           markChallengeCompleted(userId, challenge.id);
-          adjustCredits(userId, challenge.reward, 'challenge:reward');
+          adjustCredits(userId, challenge.reward, 'challenge:reward'); // reward already in cents from db
           markChallengeRewardClaimed(userId, challenge.id);
-          const updatedUser = getUser(userId) as any;
           const sid = userSockets.get(userId);
           if (sid) {
-            io.to(sid).emit('user_data', updatedUser);
-            io.to(sid).emit('challenge:completed', { challengeId: challenge.id, reward: challenge.reward, description: challenge.description });
+            io.to(sid).emit('user_data', userToClient(getUser(userId)));
+            io.to(sid).emit('challenge:completed', { challengeId: challenge.id, reward: challenge.reward / 100, description: challenge.description });
           }
         } else {
           const sid = userSockets.get(userId);
@@ -1400,18 +1406,19 @@ async function startServer() {
 
   // --- Jackpot Helper ---
   let lastEmittedJackpot = 0;
-  const checkJackpot = (userId: string, username: string, betAmount: number, game: string = 'unknown') => {
-    addToJackpot(betAmount * 0.01);
-    const newJackpot = getJackpot();
-    if (Math.abs(newJackpot - lastEmittedJackpot) >= 1) {
+  const checkJackpot = (userId: string, username: string, betCents: number, game: string = 'unknown') => {
+    addToJackpot(Math.round(betCents * 0.01)); // 1% of bet in cents
+    const newJackpot = getJackpot(); // cents
+    if (Math.abs(newJackpot - lastEmittedJackpot) >= 100) { // threshold in cents (~$1)
       lastEmittedJackpot = newJackpot;
-      io.emit("jackpot:update", newJackpot);
+      io.emit("jackpot:update", getJackpotDollars());
     }
     if (Math.random() < 0.0002) {
+      const wonAmountDollars = newJackpot / 100;
       adjustCredits(userId, newJackpot, "jackpot:win");
       resetJackpot();
-      io.emit("jackpot:winner", { username, amount: newJackpot });
-      io.emit("jackpot:update", getJackpot());
+      io.emit("jackpot:winner", { username, amount: wonAmountDollars });
+      io.emit("jackpot:update", getJackpotDollars());
     }
   };
 
@@ -1467,15 +1474,15 @@ async function startServer() {
 
     // 3. Initial Data
     socket.emit("server:version", SERVER_VERSION);
-    socket.emit("user_data", socket.user);
+    socket.emit("user_data", userToClient(socket.user));
     socket.emit("user_achievements", getAchievements(userId));
-    socket.emit("challenges:data", getUserChallengeProgress(userId));
+    socket.emit("challenges:data", getUserChallengeProgress(userId).map((c: any) => ({ ...c, reward: c.reward / 100 })));
     const savedFs = getFreeSpins(userId);
     if (savedFs && savedFs.count > 0) {
-      socket.emit("slots:free_spins_restored", { count: savedFs.count, betAmount: savedFs.bet_amount });
+      socket.emit("slots:free_spins_restored", { count: savedFs.count, betAmount: savedFs.bet_amount / 100 });
     }
     socket.emit("activity:history", activityHistory);
-    socket.emit("jackpot:update", getJackpot());
+    socket.emit("jackpot:update", getJackpotDollars());
     broadcastLeaderboards();
     
     // Initial Crash Data
@@ -1485,11 +1492,11 @@ async function startServer() {
       history: crashHistory,
       timeLeft: crashCurrentWait,
       points: crashPoints,
-      bets: Array.from(crashBets.values())
+      bets: crashBetsDollars()
     });
     const initActiveBet = crashBets.get(userId);
     if (initActiveBet && !initActiveBet.cashedOut) {
-      socket.emit("crash:bet_restored", { betAmount: initActiveBet.betAmount });
+      socket.emit("crash:bet_restored", { betAmount: initActiveBet.betAmount / 100 });
     }
 
     socket.on("crash:join", () => {
@@ -1499,11 +1506,11 @@ async function startServer() {
         history: crashHistory,
         timeLeft: crashCurrentWait,
         points: crashPoints,
-        bets: Array.from(crashBets.values())
+        bets: crashBetsDollars()
       });
       const myActiveBet = crashBets.get(userId);
       if (myActiveBet && !myActiveBet.cashedOut) {
-        socket.emit("crash:bet_restored", { betAmount: myActiveBet.betAmount });
+        socket.emit("crash:bet_restored", { betAmount: myActiveBet.betAmount / 100 });
       }
       if (crashState === 'crashed') {
         socket.emit("crash:crashed", { multiplier: crashMultiplier, history: crashHistory });
@@ -1511,7 +1518,7 @@ async function startServer() {
     });
 
     socket.on("challenges:get", () => {
-      socket.emit("challenges:data", getUserChallengeProgress(userId));
+      socket.emit("challenges:data", getUserChallengeProgress(userId).map((c: any) => ({ ...c, reward: c.reward / 100 })));
     });
 
     // --- Crash Handlers ---
@@ -1519,14 +1526,13 @@ async function startServer() {
       if (crashState !== 'waiting') return socket.emit("error", "Game already in progress");
       const bet = crashBets.get(userId);
       if (!bet) return socket.emit("error", "No active bet to cancel");
-      
+
       try {
         adjustCredits(userId, bet.betAmount, "crash:cancel_bet");
         crashBets.delete(userId);
-        
-        const updatedUser = getUser(userId) as any;
-        socket.emit("user_data", updatedUser);
-        io.emit("crash:bets_update", Array.from(crashBets.values()));
+
+        socket.emit("user_data", userToClient(getUser(userId)));
+        io.emit("crash:bets_update", crashBetsDollars());
       } catch (err: any) {
         socketError(socket, err, 'crash:cancel_bet');
       }
@@ -1536,26 +1542,26 @@ async function startServer() {
       if (!socketRateLimit(userId, 'crash:bet', 5, 2000)) return socket.emit("error", "Too many requests");
       if (crashState !== 'waiting') return socket.emit("error", "Game already in progress");
       if (crashBets.has(userId)) return socket.emit("error", "Already placed a bet");
-      
-      const { betAmount, autoCashout } = data;
+
+      const { betAmount, autoCashout } = data; // betAmount in dollars from client
       if (betAmount < 0.01) return socket.emit("error", "Minimum bet is $0.01");
-      if (betAmount > MAX_BET) return socket.emit("error", "Maximum bet is $100,000");
+      if (betAmount > 100000) return socket.emit("error", "Maximum bet is $100,000");
+      const betCents = Math.round(betAmount * 100);
 
       try {
-        adjustCredits(userId, -betAmount, "crash:bet");
-        checkJackpot(userId, socket.user.username, betAmount, 'crash');
+        adjustCredits(userId, -betCents, "crash:bet");
+        checkJackpot(userId, socket.user.username, betCents, 'crash');
         crashBets.set(userId, {
-          userId, 
-          betAmount, 
-          username: socket.user.username, 
-          cashedOut: false, 
+          userId,
+          betAmount: betCents,
+          username: socket.user.username,
+          cashedOut: false,
           payout: 0,
           autoCashout: autoCashout || 0
         });
-        
-        const updatedUser = getUser(userId) as any;
-        socket.emit("user_data", updatedUser);
-        io.emit("crash:bets_update", Array.from(crashBets.values()));
+
+        socket.emit("user_data", userToClient(getUser(userId)));
+        io.emit("crash:bets_update", crashBetsDollars());
         checkAchievements(userId);
       } catch (err: any) {
         socketError(socket, err, 'crash:bet');
@@ -1616,36 +1622,37 @@ function generatePlinkoPath(rows: number) {
     // --- Case Opening Handlers ---
     socket.on("case:open", (data: { betAmount: number, count: number }) => {
       if (!socketRateLimit(userId, 'case:open')) return socket.emit("error", "Too many requests");
-      let { betAmount, count } = data;
+      let { betAmount, count } = data; // betAmount in dollars from client
       if (betAmount < 0.01) return socket.emit("error", "Minimum bet is $0.01");
-      if (betAmount > MAX_BET) return socket.emit("error", "Maximum bet is $100,000");
+      if (betAmount > 100000) return socket.emit("error", "Maximum bet is $100,000");
       count = Math.max(1, Math.min(5, count)); // Clamp count to 1-5
-      const totalBet = betAmount * count;
+      const betCents = Math.round(betAmount * 100);
+      const totalBetCents = betCents * count;
 
       try {
         const user = getUser(userId) as any;
-        if (user.credits < totalBet) return socket.emit("error", "Insufficient credits");
-        
+        if (user.credits < totalBetCents) return socket.emit("error", "Insufficient credits");
+
         // Deduct bet
-        adjustCredits(userId, -totalBet, "case:bet");
-        checkJackpot(userId, socket.user.username, totalBet, 'cases');
+        adjustCredits(userId, -totalBetCents, "case:bet");
+        checkJackpot(userId, socket.user.username, totalBetCents, 'cases');
 
         const results = [];
-        let totalWinnings = 0;
+        let totalWinningsCents = 0;
 
         for (let i = 0; i < count; i++) {
           const item = rollItem();
-          const winAmount = betAmount * item.multiplier;
-          totalWinnings += winAmount;
-          results.push({ item, winAmount });
+          const winAmountCents = Math.round(betCents * item.multiplier);
+          totalWinningsCents += winAmountCents;
+          results.push({ item, winAmount: winAmountCents / 100 }); // dollars for client
         }
 
-        if (totalWinnings > 0) {
-          adjustCredits(userId, totalWinnings, "case:win");
+        if (totalWinningsCents > 0) {
+          adjustCredits(userId, totalWinningsCents, "case:win");
         }
 
         const pfRound = pfRoundId(); const pfSeed = pfGenSeed();
-        try { recordProvablyFair(userId, 'cases', pfRound, pfSeed, pfHash(pfSeed), `${userId}_${Date.now()}`, JSON.stringify({ results, totalWinnings, betAmount, count })); } catch (e) { logError('cases:provably_fair', e, { userId, round: pfRound }); }
+        try { recordProvablyFair(userId, 'cases', pfRound, pfSeed, pfHash(pfSeed), `${userId}_${Date.now()}`, JSON.stringify({ results, totalWinnings: totalWinningsCents / 100, betAmount, count })); } catch (e) { logError('cases:provably_fair', e, { userId, round: pfRound }); }
 
         processChallengeProgress(userId, 'cases_open_count', count);
 
@@ -1653,18 +1660,18 @@ function generatePlinkoPath(rows: number) {
 
         socket.emit("case:result", {
           results,
-          totalWinnings,
-          newCredits: updatedUser.credits
+          totalWinnings: totalWinningsCents / 100, // dollars for client
+          newCredits: updatedUser.credits / 100 // dollars for client
         });
 
         // Queue activity — broadcast after frontend animation completes via activity:reveal
-        const net = totalWinnings - totalBet;
-        if (net !== 0) {
+        const netCents = totalWinningsCents - totalBetCents;
+        if (netCents !== 0) {
           const activity = {
             id: Math.random().toString(36).substr(2, 9),
             username: socket.user.username,
-            amount: Math.abs(net),
-            type: net > 0 ? "win" : "loss",
+            amount: Math.abs(netCents) / 100, // dollars for client
+            type: netCents > 0 ? "win" : "loss",
             game: 'Cases',
             timestamp: Date.now()
           };
@@ -1681,49 +1688,49 @@ function generatePlinkoPath(rows: number) {
     // --- Plinko Handlers ---
     socket.on("plinko:drop", (data: { betAmount: number, risk: string, rows: number }) => {
       if (!socketRateLimit(userId, 'plinko:drop')) return socket.emit("error", "Too many requests");
-      const { betAmount, risk, rows } = data;
+      const { betAmount, risk, rows } = data; // betAmount in dollars from client
       if (betAmount < 0.01) return socket.emit("error", "Minimum bet is $0.01");
-      if (betAmount > MAX_BET) return socket.emit("error", "Maximum bet is $100,000");
+      if (betAmount > 100000) return socket.emit("error", "Maximum bet is $100,000");
+      const betCents = Math.round(betAmount * 100);
 
       try {
         const user = getUser(userId) as any;
-        if (user.credits < betAmount) return socket.emit("error", "Insufficient credits");
+        if (user.credits < betCents) return socket.emit("error", "Insufficient credits");
 
         // Deduct bet
-        adjustCredits(userId, -betAmount, "plinko:bet");
-        checkJackpot(userId, socket.user.username, betAmount, 'plinko');
+        adjustCredits(userId, -betCents, "plinko:bet");
+        checkJackpot(userId, socket.user.username, betCents, 'plinko');
 
         // Generate result
         const { path, slot } = generatePlinkoPath(rows);
         const multiplier = MULTIPLIERS[rows]?.[risk]?.[slot] || 0;
-        const winnings = Math.round(betAmount * multiplier * 100) / 100;
+        const winningsCents = Math.round(betCents * multiplier);
 
         const pfRound = pfRoundId(); const pfSeed = pfGenSeed();
-        try { recordProvablyFair(userId, 'plinko', pfRound, pfSeed, pfHash(pfSeed), `${userId}_${Date.now()}`, JSON.stringify({ multiplier, winAmount: winnings, betAmount })); } catch (e) { logError('plinko:provably_fair', e, { userId, round: pfRound }); }
+        try { recordProvablyFair(userId, 'plinko', pfRound, pfSeed, pfHash(pfSeed), `${userId}_${Date.now()}`, JSON.stringify({ multiplier, winAmount: winningsCents / 100, betAmount })); } catch (e) { logError('plinko:provably_fair', e, { userId, round: pfRound }); }
 
         if (multiplier >= 5) processChallengeProgress(userId, 'plinko_hit_5x');
 
         const dropId = Math.random().toString(36).substr(2, 9);
         pendingPlinkoDrops.set(dropId, {
           userId,
-          winnings,
-          betAmount,
-          net: winnings - betAmount,
+          winnings: winningsCents,
+          betAmount: betCents,
+          net: winningsCents - betCents,
           multiplier,
           username: socket.user.username
         });
-        
-        const updatedUser = getUser(userId) as any;
-        socket.emit("user_data", updatedUser);
-        
-        // Emit result
+
+        socket.emit("user_data", userToClient(getUser(userId)));
+
+        // Emit result (dollars for client)
         socket.emit("plinko:result", {
           id: dropId,
           path,
           slot,
           multiplier,
-          winnings,
-          newCredits: updatedUser.credits,
+          winnings: winningsCents / 100,
+          newCredits: (getUser(userId) as any).credits / 100,
           risk,
           rows,
           betAmount
@@ -1741,22 +1748,21 @@ function generatePlinkoPath(rows: number) {
         pendingPlinkoDrops.delete(data.id);
 
         if (pendingDrop.winnings > 0) {
-          adjustCredits(userId, pendingDrop.winnings, "plinko:win");
+          adjustCredits(userId, pendingDrop.winnings, "plinko:win"); // winnings in cents
           updateStats(userId, { max_plinko_multiplier: pendingDrop.multiplier });
         }
 
-        const updatedUser = getUser(userId) as any;
-        socket.emit("user_data", updatedUser);
-        
+        socket.emit("user_data", userToClient(getUser(userId)));
+
         checkAchievements(userId);
 
-        // Activity Feed
+        // Activity Feed (dollars for client)
         if (pendingDrop.net !== 0) {
           const activity = {
             id: Math.random().toString(36).substr(2, 9),
             username: pendingDrop.username,
             type: pendingDrop.net > 0 ? 'win' : 'loss',
-            amount: Math.abs(pendingDrop.net),
+            amount: Math.abs(pendingDrop.net) / 100,
             game: 'Plinko',
             timestamp: Date.now()
           };
@@ -1764,7 +1770,7 @@ function generatePlinkoPath(rows: number) {
           if (activityHistory.length > 50) activityHistory.pop();
           io.emit("activity:new", activity);
         }
-        
+
         broadcastLeaderboards();
       } catch (err: any) {
         logError('plinko:landed', err, { userId });
@@ -1772,57 +1778,57 @@ function generatePlinkoPath(rows: number) {
     });
 
     socket.on("plinko:drop-multi", (data: { betAmount: number, risk: string, rows: number, count: number }) => {
-      const { betAmount, risk, rows, count } = data;
-      const totalBet = betAmount * count;
+      const { betAmount, risk, rows, count } = data; // betAmount in dollars
       if (betAmount < 0.01) return socket.emit("error", "Minimum bet is $0.01");
-      if (betAmount > MAX_BET) return socket.emit("error", "Maximum bet is $100,000");
+      if (betAmount > 100000) return socket.emit("error", "Maximum bet is $100,000");
       if (count < 1 || count > 10) return socket.emit("error", "Invalid count (max 10)");
-      
+      const betCents = Math.round(betAmount * 100);
+      const totalBetCents = betCents * count;
+
       try {
         const user = getUser(userId) as any;
-        if (user.credits < totalBet) return socket.emit("error", "Insufficient credits");
-        
+        if (user.credits < totalBetCents) return socket.emit("error", "Insufficient credits");
+
         // Deduct total bet
-        adjustCredits(userId, -totalBet, "plinko:bet-multi");
-        checkJackpot(userId, socket.user.username, totalBet, 'plinko');
-        
+        adjustCredits(userId, -totalBetCents, "plinko:bet-multi");
+        checkJackpot(userId, socket.user.username, totalBetCents, 'plinko');
+
         const results = [];
-        let totalWinnings = 0;
-        
+
         for (let i = 0; i < count; i++) {
           const { path, slot } = generatePlinkoPath(rows);
           const multiplier = MULTIPLIERS[rows]?.[risk]?.[slot] || 0;
-          const winnings = Math.round(betAmount * multiplier * 100) / 100;
-          
+          const winningsCents = Math.round(betCents * multiplier);
+
           const dropId = Math.random().toString(36).substr(2, 9);
           pendingPlinkoDrops.set(dropId, {
             userId,
-            winnings,
-            betAmount,
-            net: winnings - betAmount,
+            winnings: winningsCents,
+            betAmount: betCents,
+            net: winningsCents - betCents,
             multiplier,
             username: socket.user.username
           });
-          
+
           results.push({
             id: dropId,
             path,
             slot,
             multiplier,
-            winnings,
+            winnings: winningsCents / 100, // dollars for client
             risk,
             rows,
-            betAmount
+            betAmount // dollars for client
           });
         }
-        
+
         const updatedUser = getUser(userId) as any;
-        socket.emit("user_data", updatedUser);
-        
+        socket.emit("user_data", userToClient(updatedUser));
+
         // Emit results
         socket.emit("plinko:result-multi", {
           results,
-          newCredits: updatedUser.credits
+          newCredits: updatedUser.credits / 100
         });
       } catch (err: any) {
         socketError(socket, err, 'plinko:drop-multi');
@@ -1834,26 +1840,26 @@ function generatePlinkoPath(rows: number) {
       const bet = crashBets.get(userId);
       if (!bet || bet.cashedOut) return socket.emit("error", "No active bet or already cashed out");
 
-      const payout = Math.round(bet.betAmount * crashMultiplier * 100) / 100;
+      const payoutCents = Math.round(bet.betAmount * crashMultiplier);
       bet.cashedOut = true;
-      bet.payout = payout;
+      bet.payout = payoutCents;
 
-      adjustCredits(userId, payout, "crash:win");
+      adjustCredits(userId, payoutCents, "crash:win");
       updateStats(userId, { max_crash_multiplier: crashMultiplier });
       if (crashMultiplier >= 3) processChallengeProgress(userId, 'crash_cashout_3x');
 
-      const updatedUser = getUser(userId) as any;
-      socket.emit("user_data", updatedUser);
-      io.emit("crash:bets_update", Array.from(crashBets.values()));
-      socket.emit("crash:cashout_success", { payout, multiplier: crashMultiplier });
+      socket.emit("user_data", userToClient(getUser(userId)));
+      io.emit("crash:bets_update", crashBetsDollars());
+      socket.emit("crash:cashout_success", { payout: payoutCents / 100, multiplier: crashMultiplier });
 
       checkAchievements(userId);
 
-      // Record activity
+      // Record activity (amounts in dollars for client)
+      const netCents = payoutCents - bet.betAmount;
       const winActivity = {
         id: Math.random().toString(36).substr(2, 9),
         username: socket.user.username,
-        amount: payout - bet.betAmount,
+        amount: netCents / 100,
         type: "win",
         game: 'Crash',
         timestamp: Date.now(),
@@ -1867,36 +1873,37 @@ function generatePlinkoPath(rows: number) {
     // --- Game Handlers ---
     socket.on("slots:spin", async (data: { betAmount: number; featureBuy?: boolean }) => {
       if (!socketRateLimit(userId, 'slots:spin')) return socket.emit("error", "Too many requests");
-      const { betAmount, featureBuy = false } = data;
+      const { betAmount, featureBuy = false } = data; // betAmount in dollars from client
       try {
         const user = getUser(userId) as any;
         if (!user) return socket.emit("error", "User not found");
 
         let isFreeSpin = false;
-        let effectiveBet = betAmount;
+        let effectiveBetCents: number;
 
         if (betAmount === 0) {
           // Free spin — must have server-tracked free spins
           const fs = getFreeSpins(userId);
           if (!fs || fs.count <= 0) return socket.emit("error", "No free spins available");
           isFreeSpin = true;
-          effectiveBet = fs.bet_amount;
+          effectiveBetCents = fs.bet_amount; // already in cents
           if (fs.count - 1 <= 0) clearFreeSpins(userId);
           else setFreeSpins(userId, fs.count - 1, fs.bet_amount);
         } else {
           if (betAmount < 0.01) return socket.emit("error", "Minimum bet is $0.01");
-          if (betAmount > MAX_BET) return socket.emit("error", "Maximum bet is $100,000");
-          adjustCredits(userId, -betAmount, "slots:bet");
-          checkJackpot(userId, socket.user.username, betAmount, 'slots');
+          if (betAmount > 100000) return socket.emit("error", "Maximum bet is $100,000");
+          effectiveBetCents = Math.round(betAmount * 100);
+          adjustCredits(userId, -effectiveBetCents, "slots:bet");
+          checkJackpot(userId, socket.user.username, effectiveBetCents, 'slots');
         }
 
-        // Server generates grid and computes full outcome (tumble cascade)
-        const outcome = calcSlotOutcome(effectiveBet, isFreeSpin, featureBuy ? 4 : 0);
+        // Server generates grid and computes full outcome (tumble cascade) — bet in cents
+        const outcome = calcSlotOutcome(effectiveBetCents, isFreeSpin, featureBuy ? 4 : 0);
 
         const pfRound = pfRoundId();
         const pfSeed = pfGenSeed();
         const pfSeedHash = pfHash(pfSeed);
-        try { recordProvablyFair(userId, 'slots', pfRound, pfSeed, pfSeedHash, `${userId}_${Date.now()}`, JSON.stringify({ totalWin: outcome.totalWin, betAmount: effectiveBet, isFreeSpin })); } catch (e) { logError('slots:provably_fair', e, { userId, round: pfRound }); }
+        try { recordProvablyFair(userId, 'slots', pfRound, pfSeed, pfSeedHash, `${userId}_${Date.now()}`, JSON.stringify({ totalWin: outcome.totalWin / 100, betAmount: effectiveBetCents / 100, isFreeSpin })); } catch (e) { logError('slots:provably_fair', e, { userId, round: pfRound }); }
 
         if (outcome.totalWin > 0) {
           adjustCredits(userId, outcome.totalWin, isFreeSpin ? "slots:freespin_win" : "slots:win");
@@ -1904,37 +1911,34 @@ function generatePlinkoPath(rows: number) {
 
         if (outcome.freeSpinsTriggered) processChallengeProgress(userId, 'slots_free_spins');
 
-        // Store triggered free spins server-side
+        // Store triggered free spins server-side (bet_amount in cents)
         if (outcome.freeSpinsTriggered || outcome.freeSpinCount > 0) {
           const existingFs = getFreeSpins(userId);
           const newCount = (existingFs?.count ?? 0) + outcome.freeSpinCount;
-          // Use effectiveBet (not betAmount which is 0 during free spins) so re-triggered
-          // free spins inherit the original bet amount instead of storing 0
-          const newBet = existingFs?.bet_amount || effectiveBet;
+          const newBet = existingFs?.bet_amount || effectiveBetCents;
           setFreeSpins(userId, newCount, newBet);
         }
         const savedFsAfter = getFreeSpins(userId);
         const remainingFreeSpins = savedFsAfter?.count ?? 0;
 
-        const updatedUser = getUser(userId) as any;
-        socket.emit("user_data", updatedUser);
+        socket.emit("user_data", userToClient(getUser(userId)));
         socket.emit("slots:result", {
           grid: outcome.grid,
-          totalWin: outcome.totalWin,
+          totalWin: outcome.totalWin / 100, // dollars for client
           freeSpinsTriggered: outcome.freeSpinsTriggered,
           freeSpinCount: outcome.freeSpinCount,
           remainingFreeSpins,
           roundId: pfRound,
         });
 
-        // Record activity
-        const net = outcome.totalWin - (isFreeSpin ? 0 : betAmount);
-        if (net !== 0) {
+        // Record activity (dollars for client)
+        const netCents = outcome.totalWin - (isFreeSpin ? 0 : effectiveBetCents);
+        if (netCents !== 0) {
           const act = {
             id: Math.random().toString(36).substr(2, 9),
             username: socket.user.username,
-            amount: Math.abs(net),
-            type: net > 0 ? "win" : "loss",
+            amount: Math.abs(netCents) / 100,
+            type: netCents > 0 ? "win" : "loss",
             game: 'Slots',
             timestamp: Date.now(),
           };
@@ -1950,12 +1954,12 @@ function generatePlinkoPath(rows: number) {
     });
 
     socket.on("blackjack:bet", (data: { amount: number }) => {
-      const { amount } = data;
+      const { amount } = data; // dollars from client
+      const amountCents = Math.round(amount * 100);
       try {
-        adjustCredits(userId, -amount, "blackjack:bet");
-        checkJackpot(userId, socket.user.username, amount, 'blackjack');
-        const user = getUser(userId) as any;
-        socket.emit("user_data", user);
+        adjustCredits(userId, -amountCents, "blackjack:bet");
+        checkJackpot(userId, socket.user.username, amountCents, 'blackjack');
+        socket.emit("user_data", userToClient(getUser(userId)));
         broadcastLeaderboards();
         checkAchievements(userId);
       } catch (err: any) {
@@ -1981,36 +1985,36 @@ function generatePlinkoPath(rows: number) {
     socket.on("roulette:bet", (data: { amount: number, type: string, value: any }) => {
       if (!socketRateLimit(userId, 'roulette:bet', 30, 2000)) return socket.emit("error", "Too many requests");
       if (rouletteState !== 'waiting') return socket.emit("error", "Betting is closed");
-      const { amount, type, value } = data;
+      const { amount, type, value } = data; // amount in dollars from client
       if (amount < 0.01) return socket.emit("error", "Minimum bet is $0.01");
-      if (amount > MAX_BET) return socket.emit("error", "Maximum bet is $100,000");
-      
+      if (amount > 100000) return socket.emit("error", "Maximum bet is $100,000");
+      const amountCents = Math.round(amount * 100);
+
       try {
         const user = getUser(userId) as any;
         if (!user) return socket.emit("error", "User not found");
-        if (user.credits < amount) return socket.emit("error", "Insufficient credits");
-        
+        if (user.credits < amountCents) return socket.emit("error", "Insufficient credits");
+
         const betKey = `${userId}_${type}_${value}`;
         const existingBet = rouletteBets.get(betKey);
 
-        adjustCredits(userId, -amount, "roulette:bet");
-        checkJackpot(userId, socket.user.username, amount, 'roulette');
+        adjustCredits(userId, -amountCents, "roulette:bet");
+        checkJackpot(userId, socket.user.username, amountCents, 'roulette');
 
         if (existingBet) {
-          existingBet.betAmount += amount;
+          existingBet.betAmount += amountCents;
         } else {
           rouletteBets.set(betKey, {
             userId,
-            betAmount: amount,
+            betAmount: amountCents,
             username: socket.user.username,
             type,
             value
           });
         }
 
-        const updatedUser = getUser(userId) as any;
-        socket.emit("user_data", updatedUser);
-        io.emit("roulette:bets_update", Array.from(rouletteBets.values()));
+        socket.emit("user_data", userToClient(getUser(userId)));
+        io.emit("roulette:bets_update", rouletteBetsDollars());
         checkAchievements(userId);
       } catch (err: any) {
         socketError(socket, err, 'roulette:bet');
@@ -2021,7 +2025,7 @@ function generatePlinkoPath(rows: number) {
       if (rouletteState !== 'waiting') return socket.emit("error", "Betting is closed");
       const { type, value } = data;
       const betKey = `${userId}_${type}_${value}`;
-      
+
       const bet = rouletteBets.get(betKey);
       if (!bet) return socket.emit("error", "Bet not found");
       if (bet.userId !== userId) return socket.emit("error", "Unauthorized");
@@ -2030,9 +2034,8 @@ function generatePlinkoPath(rows: number) {
         adjustCredits(userId, bet.betAmount, "roulette:refund");
         rouletteBets.delete(betKey);
 
-        const updatedUser = getUser(userId) as any;
-        socket.emit("user_data", updatedUser);
-        io.emit("roulette:bets_update", Array.from(rouletteBets.values()));
+        socket.emit("user_data", userToClient(getUser(userId)));
+        io.emit("roulette:bets_update", rouletteBetsDollars());
       } catch (err: any) {
         socketError(socket, err, 'roulette:remove_bet');
       }
@@ -2043,7 +2046,7 @@ function generatePlinkoPath(rows: number) {
         state: rouletteState,
         timeLeft: rouletteCurrentWait,
         history: rouletteHistory,
-        bets: Array.from(rouletteBets.values()),
+        bets: rouletteBetsDollars(),
         lastResult: lastRouletteResult
       });
     });
@@ -2105,23 +2108,23 @@ function generatePlinkoPath(rows: number) {
     socket.on("mines:start", (data: { betAmount: number, mineCount: number }) => {
       if (!socketRateLimit(userId, 'mines:start')) return socket.emit("error", "Too many requests");
       try {
-        const { betAmount } = data;
+        const { betAmount } = data; // dollars from client
         const mc = Math.min(24, Math.max(1, Math.floor(data.mineCount || 3)));
         if (betAmount < 0.01) return socket.emit("error", "Minimum bet is $0.01");
-        if (betAmount > MAX_BET) return socket.emit("error", "Maximum bet is $100,000");
+        if (betAmount > 100000) return socket.emit("error", "Maximum bet is $100,000");
+        const betCents = Math.round(betAmount * 100);
         const user = getUser(userId) as any;
-        if (!user || user.credits < betAmount) return socket.emit("error", "Insufficient credits");
+        if (!user || user.credits < betCents) return socket.emit("error", "Insufficient credits");
 
         activeMinesGames.delete(userId); // cancel any existing game
         const positions = new Set<number>();
         while (positions.size < mc) positions.add(Math.floor(Math.random() * 25));
 
-        adjustCredits(userId, -betAmount, "mines:bet");
-        checkJackpot(userId, socket.user.username, betAmount, 'mines');
-        activeMinesGames.set(userId, { betAmount, mineCount: mc, minePositions: positions, revealedCount: 0, revealedTiles: new Set() });
+        adjustCredits(userId, -betCents, "mines:bet");
+        checkJackpot(userId, socket.user.username, betCents, 'mines');
+        activeMinesGames.set(userId, { betAmount: betCents, mineCount: mc, minePositions: positions, revealedCount: 0, revealedTiles: new Set() });
 
-        const updatedUser = getUser(userId) as any;
-        socket.emit("user_data", updatedUser);
+        socket.emit("user_data", userToClient(getUser(userId)));
         socket.emit("mines:started", { mineCount: mc });
       } catch (err: any) {
         socketError(socket, err, 'mines:start');
@@ -2139,8 +2142,8 @@ function generatePlinkoPath(rows: number) {
           activeMinesGames.delete(userId);
           // Send boom event first so the animation plays, then queue activity
           socket.emit("mines:boom", { id, minePositions: Array.from(game.minePositions) });
-          socket.emit("user_data", getUser(userId));
-          const activity = { id: Math.random().toString(36).substr(2,9), username: socket.user.username, amount: game.betAmount, type: 'loss', game: 'Mines', timestamp: Date.now() };
+          socket.emit("user_data", userToClient(getUser(userId)));
+          const activity = { id: Math.random().toString(36).substr(2,9), username: socket.user.username, amount: game.betAmount / 100, type: 'loss', game: 'Mines', timestamp: Date.now() };
           const existingA = pendingWins.get(userId) || [];
           existingA.push(activity);
           pendingWins.set(userId, existingA);
@@ -2151,15 +2154,14 @@ function generatePlinkoPath(rows: number) {
           const allSafeRevealed = game.revealedCount === 25 - game.mineCount;
           if (allSafeRevealed) {
             activeMinesGames.delete(userId);
-            const winAmount = Math.round(game.betAmount * multiplier * 100) / 100;
-            adjustCredits(userId, winAmount, "mines:win");
+            const winAmountCents = Math.round(game.betAmount * multiplier);
+            adjustCredits(userId, winAmountCents, "mines:win");
             updateStats(userId, { mines_wins: 1 });
             if (game.revealedCount >= 3) processChallengeProgress(userId, 'mines_gems_revealed', game.revealedCount);
-            const updatedUser = getUser(userId) as any;
-            socket.emit("user_data", updatedUser);
-            socket.emit("mines:safe", { id, multiplier, winAmount, gameOver: true, minePositions: Array.from(game.minePositions) });
-            const net = winAmount - game.betAmount;
-            const act = { id: Math.random().toString(36).substr(2,9), username: socket.user.username, amount: Math.abs(net), type: 'win', game: 'Mines', timestamp: Date.now() };
+            socket.emit("user_data", userToClient(getUser(userId)));
+            socket.emit("mines:safe", { id, multiplier, winAmount: winAmountCents / 100, gameOver: true, minePositions: Array.from(game.minePositions) });
+            const netCents = winAmountCents - game.betAmount;
+            const act = { id: Math.random().toString(36).substr(2,9), username: socket.user.username, amount: Math.abs(netCents) / 100, type: 'win', game: 'Mines', timestamp: Date.now() };
             const existingB = pendingWins.get(userId) || [];
             existingB.push(act);
             pendingWins.set(userId, existingB);
@@ -2178,16 +2180,15 @@ function generatePlinkoPath(rows: number) {
         const game = activeMinesGames.get(userId);
         if (!game || game.revealedCount === 0) return socket.emit("error", "Reveal at least one tile before cashing out");
         const multiplier = calcMinesMultiplier(game.revealedCount, game.mineCount);
-        const winAmount = Math.round(game.betAmount * multiplier * 100) / 100;
+        const winAmountCents = Math.round(game.betAmount * multiplier);
         activeMinesGames.delete(userId);
-        adjustCredits(userId, winAmount, "mines:win");
+        adjustCredits(userId, winAmountCents, "mines:win");
         updateStats(userId, { mines_wins: 1 });
         if (game.revealedCount >= 3) processChallengeProgress(userId, 'mines_gems_revealed', game.revealedCount);
-        const updatedUser = getUser(userId) as any;
-        socket.emit("user_data", updatedUser);
-        socket.emit("mines:cashout_result", { winAmount, multiplier, minePositions: Array.from(game.minePositions) });
-        const net = winAmount - game.betAmount;
-        const activity = { id: Math.random().toString(36).substr(2,9), username: socket.user.username, amount: Math.abs(net), type: 'win', game: 'Mines', timestamp: Date.now() };
+        socket.emit("user_data", userToClient(getUser(userId)));
+        socket.emit("mines:cashout_result", { winAmount: winAmountCents / 100, multiplier, minePositions: Array.from(game.minePositions) });
+        const netCents = winAmountCents - game.betAmount;
+        const activity = { id: Math.random().toString(36).substr(2,9), username: socket.user.username, amount: Math.abs(netCents) / 100, type: 'win', game: 'Mines', timestamp: Date.now() };
         const existingM = pendingWins.get(userId) || [];
         existingM.push(activity);
         pendingWins.set(userId, existingM);
@@ -2200,8 +2201,7 @@ function generatePlinkoPath(rows: number) {
     socket.on("mines:lost", (data: { id: number, betAmount: number }) => {
       try {
         /* no-op: mine hits are now handled server-side in mines:reveal */
-        const updatedUser = getUser(userId) as any;
-        socket.emit("user_data", updatedUser);
+        socket.emit("user_data", userToClient(getUser(userId)));
         checkAchievements(userId);
       } catch (err: any) {
         socketError(socket, err, 'mines:lost');
@@ -2212,16 +2212,17 @@ function generatePlinkoPath(rows: number) {
     socket.on("war:pvp_queue", (data: { betAmount: number }) => {
       if (!socketRateLimit(userId, 'war:pvp_queue', 5, 2000)) return socket.emit("error", "Too many requests");
       try {
-        const { betAmount } = data;
+        const { betAmount } = data; // dollars from client
         if (betAmount <= 0) return socket.emit("error", "Invalid bet");
-        if (betAmount > MAX_BET) return socket.emit("error", "Maximum bet is $100,000");
+        if (betAmount > 100000) return socket.emit("error", "Maximum bet is $100,000");
+        const betCents = Math.round(betAmount * 100);
         const user = getUser(userId) as any;
-        if (!user || user.credits < betAmount) return socket.emit("error", "Insufficient credits");
+        if (!user || user.credits < betCents) return socket.emit("error", "Insufficient credits");
 
         // Remove any existing queue entry for this user
         warQueue = warQueue.filter(p => p.userId !== userId);
 
-        warQueue.push({ userId, socketId: socket.id, username: socket.user.username, betAmount });
+        warQueue.push({ userId, socketId: socket.id, username: socket.user.username, betAmount: betCents });
         socket.emit("war:pvp_queued", { position: warQueue.length });
 
         // Try to match two players
@@ -2253,8 +2254,8 @@ function generatePlinkoPath(rows: number) {
           if (s2) s2.emit("war:pvp_matched", { roomId, opponent: { username: p1.username } });
 
           // Send updated balances
-          if (s1) s1.emit("user_data", getUser(p1.userId));
-          if (s2) s2.emit("user_data", getUser(p2.userId));
+          if (s1) s1.emit("user_data", userToClient(getUser(p1.userId)));
+          if (s2) s2.emit("user_data", userToClient(getUser(p2.userId)));
 
           // Deal cards after short delay (animation)
           setTimeout(() => {
@@ -2278,12 +2279,12 @@ function generatePlinkoPath(rows: number) {
                 if (p1Wins) updateStats(p1.userId, { war_wins: 1 });
                 else updateStats(p2.userId, { war_wins: 1 });
 
-                const emitResult = (playerId: string, pSocketId: string, won: boolean, betAmt: number, winAmount: number) => {
-                  const net = won ? betAmt : -betAmt;
-                  const activity = { id: Math.random().toString(36).substr(2,9), username: won ? p1Wins ? p1.username : p2.username : (!p1Wins ? p1.username : p2.username), amount: Math.abs(net), type: net > 0 ? 'win' : 'loss', game: 'War PVP', timestamp: Date.now() };
+                const emitResult = (playerId: string, pSocketId: string, won: boolean, betAmtCents: number, winAmountCents: number) => {
+                  const netCents = won ? betAmtCents : -betAmtCents;
+                  const activity = { id: Math.random().toString(36).substr(2,9), username: won ? p1Wins ? p1.username : p2.username : (!p1Wins ? p1.username : p2.username), amount: Math.abs(netCents) / 100, type: netCents > 0 ? 'win' : 'loss', game: 'War PVP', timestamp: Date.now() };
                   activityHistory.unshift(activity); if (activityHistory.length > 50) activityHistory.pop(); io.emit("activity:new", activity);
                   const s = io.sockets.sockets.get(pSocketId) as any;
-                  if (s) { s.emit("war:pvp_result", { result: won ? 'win' : 'lose', winAmount, betAmount: betAmt }); s.emit("user_data", getUser(playerId)); }
+                  if (s) { s.emit("war:pvp_result", { result: won ? 'win' : 'lose', winAmount: winAmountCents / 100, betAmount: betAmtCents / 100 }); s.emit("user_data", userToClient(getUser(playerId))); }
                   checkAchievements(playerId);
                 };
 
@@ -2333,14 +2334,14 @@ function generatePlinkoPath(rows: number) {
             const resolve = (p: typeof room.player1, pSocket: any, pDecision: string, opponentDecision: string) => {
               if (pDecision === 'surrender') {
                 // Lose half bet — already deducted, refund half
-                const refund = Math.round(p.betAmount / 2 * 100) / 100;
-                adjustCredits(p.userId, refund, "war:pvp_surrender");
-                if (pSocket) { pSocket.emit("war:pvp_result", { result: 'surrender', winAmount: refund, betAmount: p.betAmount }); pSocket.emit("user_data", getUser(p.userId)); }
+                const refundCents = Math.round(p.betAmount / 2);
+                adjustCredits(p.userId, refundCents, "war:pvp_surrender");
+                if (pSocket) { pSocket.emit("war:pvp_result", { result: 'surrender', winAmount: refundCents / 100, betAmount: p.betAmount / 100 }); pSocket.emit("user_data", userToClient(getUser(p.userId))); }
               } else {
                 // Opponent surrendered — we win our original bet back (already deducted)
                 adjustCredits(p.userId, p.betAmount * 2, "war:pvp_win");
                 updateStats(p.userId, { war_wins: 1 });
-                if (pSocket) { pSocket.emit("war:pvp_result", { result: 'win', winAmount: p.betAmount * 2, betAmount: p.betAmount }); pSocket.emit("user_data", getUser(p.userId)); }
+                if (pSocket) { pSocket.emit("war:pvp_result", { result: 'win', winAmount: (p.betAmount * 2) / 100, betAmount: p.betAmount / 100 }); pSocket.emit("user_data", userToClient(getUser(p.userId))); }
                 checkAchievements(p.userId);
               }
             };
@@ -2370,8 +2371,8 @@ function generatePlinkoPath(rows: number) {
 
             const s1 = io.sockets.sockets.get(room.player1.socketId) as any;
             const s2 = io.sockets.sockets.get(room.player2.socketId) as any;
-            if (s1) s1.emit("user_data", getUser(room.player1.userId));
-            if (s2) s2.emit("user_data", getUser(room.player2.userId));
+            if (s1) s1.emit("user_data", userToClient(getUser(room.player1.userId)));
+            if (s2) s2.emit("user_data", userToClient(getUser(room.player2.userId)));
 
             const warCard1 = dealWarCardFixed();
             const warCard2 = dealWarCardFixed();
@@ -2387,15 +2388,15 @@ function generatePlinkoPath(rows: number) {
 
               setTimeout(() => {
                 const p1Wins = warCard1.value > warCard2.value || (warCard1.value === warCard2.value && Math.random() < 0.5);
-                const win1 = room.player1.betAmount * 8;
-                const win2 = room.player2.betAmount * 8;
-                if (p1Wins) { adjustCredits(room.player1.userId, win1, "war:pvp_war_win"); updateStats(room.player1.userId, { war_wins: 1 }); }
-                else { adjustCredits(room.player2.userId, win2, "war:pvp_war_win"); updateStats(room.player2.userId, { war_wins: 1 }); }
+                const win1Cents = room.player1.betAmount * 8;
+                const win2Cents = room.player2.betAmount * 8;
+                if (p1Wins) { adjustCredits(room.player1.userId, win1Cents, "war:pvp_war_win"); updateStats(room.player1.userId, { war_wins: 1 }); }
+                else { adjustCredits(room.player2.userId, win2Cents, "war:pvp_war_win"); updateStats(room.player2.userId, { war_wins: 1 }); }
 
                 const s1 = io.sockets.sockets.get(room.player1.socketId) as any;
                 const s2 = io.sockets.sockets.get(room.player2.socketId) as any;
-                if (s1) { s1.emit("war:pvp_result", { result: p1Wins ? 'win' : 'lose', winAmount: p1Wins ? win1 : 0, betAmount: room.player1.betAmount * 2 }); s1.emit("user_data", getUser(room.player1.userId)); }
-                if (s2) { s2.emit("war:pvp_result", { result: !p1Wins ? 'win' : 'lose', winAmount: !p1Wins ? win2 : 0, betAmount: room.player2.betAmount * 2 }); s2.emit("user_data", getUser(room.player2.userId)); }
+                if (s1) { s1.emit("war:pvp_result", { result: p1Wins ? 'win' : 'lose', winAmount: p1Wins ? win1Cents / 100 : 0, betAmount: (room.player1.betAmount * 2) / 100 }); s1.emit("user_data", userToClient(getUser(room.player1.userId))); }
+                if (s2) { s2.emit("war:pvp_result", { result: !p1Wins ? 'win' : 'lose', winAmount: !p1Wins ? win2Cents / 100 : 0, betAmount: (room.player2.betAmount * 2) / 100 }); s2.emit("user_data", userToClient(getUser(room.player2.userId))); }
 
                 checkAchievements(room.player1.userId);
                 checkAchievements(room.player2.userId);
@@ -2414,35 +2415,36 @@ function generatePlinkoPath(rows: number) {
     socket.on("wheel:spin", (data: { betAmount: number; risk: string }) => {
       if (!socketRateLimit(userId, 'wheel:spin')) return socket.emit("error", "Too many requests");
       try {
-        const { betAmount, risk } = data;
+        const { betAmount, risk } = data; // dollars from client
         if (betAmount < 0.01) return socket.emit("error", "Minimum bet is $0.01");
-        if (betAmount > MAX_BET) return socket.emit("error", "Maximum bet is $100,000");
+        if (betAmount > 100000) return socket.emit("error", "Maximum bet is $100,000");
+        const betCents = Math.round(betAmount * 100);
         const user = getUser(userId) as any;
-        if (!user || user.credits < betAmount) return socket.emit("error", "Insufficient credits");
+        if (!user || user.credits < betCents) return socket.emit("error", "Insufficient credits");
 
         const segments = WHEEL_SEGMENTS[risk] ?? WHEEL_SEGMENTS.medium;
         const segmentIndex = Math.floor(Math.random() * segments.length);
         const multiplier = segments[segmentIndex];
-        const winAmount = Math.round(betAmount * multiplier * 100) / 100;
+        const winAmountCents = Math.round(betCents * multiplier);
         const won = multiplier > 0;
 
-        adjustCredits(userId, -betAmount, "wheel:bet");
-        checkJackpot(userId, socket.user.username, betAmount, 'wheel');
-        if (won && winAmount > 0) {
-          adjustCredits(userId, winAmount, "wheel:win");
+        adjustCredits(userId, -betCents, "wheel:bet");
+        checkJackpot(userId, socket.user.username, betCents, 'wheel');
+        if (won && winAmountCents > 0) {
+          adjustCredits(userId, winAmountCents, "wheel:win");
           updateStats(userId, { max_wheel_multiplier: multiplier });
         }
         if (multiplier >= 2) processChallengeProgress(userId, 'wheel_hit_2x');
 
         const pfRound = pfRoundId(); const pfSeed = pfGenSeed();
-        try { recordProvablyFair(userId, 'wheel', pfRound, pfSeed, pfHash(pfSeed), `${userId}_${Date.now()}`, JSON.stringify({ multiplier, betAmount, winAmount })); } catch (e) { logError('wheel:provably_fair', e, { userId, round: pfRound }); }
+        try { recordProvablyFair(userId, 'wheel', pfRound, pfSeed, pfHash(pfSeed), `${userId}_${Date.now()}`, JSON.stringify({ multiplier, betAmount, winAmount: winAmountCents / 100 })); } catch (e) { logError('wheel:provably_fair', e, { userId, round: pfRound }); }
 
-        const net = won ? winAmount - betAmount : -betAmount;
+        const netCents = won ? winAmountCents - betCents : -betCents;
         const activity = {
           id: Math.random().toString(36).substr(2, 9),
           username: socket.user.username,
-          amount: Math.abs(net),
-          type: net > 0 ? 'win' : 'loss',
+          amount: Math.abs(netCents) / 100, // dollars for client
+          type: netCents > 0 ? 'win' : 'loss',
           game: 'Wheel',
           timestamp: Date.now(),
         };
@@ -2450,9 +2452,8 @@ function generatePlinkoPath(rows: number) {
         existing.push(activity);
         pendingWins.set(userId, existing);
 
-        const updatedUser = getUser(userId) as any;
-        socket.emit("user_data", updatedUser);
-        socket.emit("wheel:outcome", { segmentIndex, multiplier, winAmount, won });
+        socket.emit("user_data", userToClient(getUser(userId)));
+        socket.emit("wheel:outcome", { segmentIndex, multiplier, winAmount: winAmountCents / 100, won });
         broadcastLeaderboards();
       } catch (err: any) {
         socketError(socket, err, 'wheel:spin');
@@ -2485,7 +2486,7 @@ function generatePlinkoPath(rows: number) {
             const opponentBet = isP1 ? room.player2.betAmount : room.player1.betAmount;
             const disconnectorBet = isP1 ? room.player1.betAmount : room.player2.betAmount;
             adjustCredits(opponentUserId, opponentBet, "war:pvp_refund");
-            if (os) os.emit("user_data", getUser(opponentUserId));
+            if (os) os.emit("user_data", userToClient(getUser(opponentUserId)));
             // Refund disconnecting player too — their credits are corrected for next login
             try { adjustCredits(userId, disconnectorBet, "war:pvp_refund"); } catch (e) { logError('war:pvp_refund', e, { userId, amount: disconnectorBet }); }
           }
