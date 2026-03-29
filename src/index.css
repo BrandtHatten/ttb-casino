@@ -6,11 +6,18 @@
 }
 
 @layer base {
-  body {
+  html, body {
     @apply bg-[#0a0a0a] text-white overflow-x-hidden;
     background: radial-gradient(circle at 50% 0%, #1a1a1a 0%, #0a0a0a 100%);
+    -webkit-text-size-adjust: 100%;
+    touch-action: manipulation;
   }
-  
+
+  /* Prevent iOS Safari zoom on input focus — inputs must be >= 16px */
+  input, select, textarea {
+    font-size: 16px !important;
+  }
+
   /* Remove spin buttons from number inputs */
   input[type=number]::-webkit-inner-spin-button,
   input[type=number]::-webkit-outer-spin-button {
