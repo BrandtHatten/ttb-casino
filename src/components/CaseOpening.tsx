@@ -211,7 +211,7 @@ export const CaseOpening: React.FC<CaseOpeningProps> = ({ socket, user, updateCr
               <label className="text-xs font-black text-white/40 uppercase tracking-widest px-1">Bet Amount</label>
               <div className="flex bg-[#0f1923] rounded-lg border border-white/5 p-1">
                 <input
-                  type="number"
+                  type="number" inputMode="decimal"
                   value={betAmount}
                   onChange={(e) => setBetAmount(e.target.value)}
                   disabled={isOpening}
@@ -360,7 +360,7 @@ export const CaseOpening: React.FC<CaseOpeningProps> = ({ socket, user, updateCr
                   <div className="space-y-1">
                     <label className="text-[10px] font-black text-white/30 uppercase tracking-widest">Rounds</label>
                     <input
-                      type="number"
+                      type="number" inputMode="decimal"
                       value={autobetRounds}
                       onChange={e => setAutobetRounds(e.target.value)}
                       disabled={autobetRef.current.active}
@@ -373,7 +373,7 @@ export const CaseOpening: React.FC<CaseOpeningProps> = ({ socket, user, updateCr
                   <div className="space-y-1">
                     <label className="text-[10px] font-black text-white/30 uppercase tracking-widest">Stop Profit</label>
                     <input
-                      type="number"
+                      type="number" inputMode="decimal"
                       value={autobetStopProfit}
                       onChange={e => setAutobetStopProfit(e.target.value)}
                       disabled={autobetRef.current.active}
@@ -386,7 +386,7 @@ export const CaseOpening: React.FC<CaseOpeningProps> = ({ socket, user, updateCr
                   <div className="space-y-1">
                     <label className="text-[10px] font-black text-white/30 uppercase tracking-widest">Stop Loss</label>
                     <input
-                      type="number"
+                      type="number" inputMode="decimal"
                       value={autobetStopLoss}
                       onChange={e => setAutobetStopLoss(e.target.value)}
                       disabled={autobetRef.current.active}

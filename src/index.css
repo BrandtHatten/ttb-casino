@@ -123,3 +123,9 @@
 .custom-scrollbar::-webkit-scrollbar-thumb:hover {
   background: rgba(255, 255, 255, 0.2);
 }
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-float, .animate-spin-slow, .glow-bg, .animate-scatter-win, .animate-scatter-tension {
+    animation: none !important;
+  }
+}

@@ -247,17 +247,17 @@ export default function RouletteGame({ socket, user }: RouletteGameProps) {
     const numbers = Array.from({ length: 36 }, (_, i) => i + 1);
     
     return (
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 md:gap-8">
         {/* Left Column: Controls */}
         <div className="space-y-6">
-          <div className="bg-zinc-900/50 p-6 rounded-2xl border border-zinc-800">
+          <div className="bg-zinc-900/50 p-3 sm:p-6 rounded-2xl border border-zinc-800">
             <div className="flex items-center gap-2 mb-4 text-zinc-400">
               <Coins className="w-4 h-4" />
               <span className="text-sm font-medium uppercase tracking-wider">Bet Amount</span>
             </div>
             <div className="relative">
               <input
-                type="number"
+                type="number" inputMode="decimal"
                 value={betAmount}
                 onChange={(e) => setBetAmount(e.target.value)}
                 className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-3 text-xl font-bold text-white focus:outline-none focus:border-yellow-500/50 transition-colors"
@@ -292,7 +292,7 @@ export default function RouletteGame({ socket, user }: RouletteGameProps) {
             </div>
           </div>
 
-          <div className="bg-zinc-900/50 p-6 rounded-2xl border border-zinc-800">
+          <div className="hidden md:block bg-zinc-900/50 p-6 rounded-2xl border border-zinc-800">
             <div className="flex items-center justify-between mb-4">
               <div className="flex items-center gap-2 text-zinc-400">
                 <Timer className="w-4 h-4" />
@@ -334,13 +334,13 @@ export default function RouletteGame({ socket, user }: RouletteGameProps) {
 
         {/* Middle & Right Column: Betting Board */}
         <div className="md:col-span-2 space-y-4">
-          <div className="bg-zinc-900/50 p-4 rounded-2xl border border-zinc-800">
+          <div className="bg-zinc-900/50 p-2 sm:p-4 rounded-2xl border border-zinc-800">
             {/* Main Numbers Grid */}
-            <div className="flex gap-1">
+            <div className="flex gap-0.5 sm:gap-1">
               {/* Zero */}
               <button
                 onClick={() => placeBet('straight', 0)}
-                className="w-16 h-full min-h-[120px] bg-emerald-600 hover:bg-emerald-500 rounded-lg flex flex-col items-center justify-center text-xl font-bold transition-all hover:scale-105 active:scale-95 relative overflow-hidden"
+                className="w-8 sm:w-16 h-full min-h-[90px] sm:min-h-[120px] bg-emerald-600 hover:bg-emerald-500 rounded-lg flex flex-col items-center justify-center text-sm sm:text-xl font-bold transition-all active:scale-95 relative overflow-hidden"
               >
                 <span>0</span>
                 {getBetAmount('straight', 0) > 0 && (
@@ -350,7 +350,7 @@ export default function RouletteGame({ socket, user }: RouletteGameProps) {
                 )}
               </button>
               
-              <div className="flex-1 grid grid-cols-12 grid-rows-3 gap-1">
+              <div className="flex-1 grid grid-cols-12 grid-rows-3 gap-0.5 sm:gap-1">
                 {/* Numbers 1-36 are usually in 3 rows: 
                    Row 1: 3, 6, 9, 12, 15, 18, 21, 24, 27, 30, 33, 36
                    Row 2: 2, 5, 8, 11, 14, 17, 20, 23, 26, 29, 32, 35
@@ -362,7 +362,7 @@ export default function RouletteGame({ socket, user }: RouletteGameProps) {
                   <button
                     key={num}
                     onClick={() => placeBet('straight', num)}
-                    className={`h-10 rounded flex flex-col items-center justify-center font-bold text-sm transition-all hover:scale-110 active:scale-95 relative overflow-hidden ${getBgColor(getColor(num))}`}
+                    className={`h-7 sm:h-10 rounded flex flex-col items-center justify-center font-bold text-[10px] sm:text-sm transition-all active:scale-95 relative overflow-hidden ${getBgColor(getColor(num))}`}
                   >
                     <span>{num}</span>
                     {getBetAmount('straight', num) > 0 && (
@@ -376,10 +376,10 @@ export default function RouletteGame({ socket, user }: RouletteGameProps) {
             </div>
 
             {/* Outside Bets */}
-            <div className="grid grid-cols-3 gap-1 mt-4">
+            <div className="grid grid-cols-3 gap-0.5 sm:gap-1 mt-2 sm:mt-4">
               <button 
                 onClick={() => placeBet('dozen1')}
-                className="py-3 bg-zinc-800 hover:bg-zinc-700 rounded-lg font-bold text-xs uppercase tracking-wider transition-colors relative overflow-hidden"
+                className="py-1.5 sm:py-3 bg-zinc-800 hover:bg-zinc-700 rounded-lg font-bold text-[9px] sm:text-xs uppercase tracking-wider transition-colors relative overflow-hidden"
               >
                 <span>1st 12</span>
                 {getBetAmount('dozen1') > 0 && (
@@ -390,7 +390,7 @@ export default function RouletteGame({ socket, user }: RouletteGameProps) {
               </button>
               <button 
                 onClick={() => placeBet('dozen2')}
-                className="py-3 bg-zinc-800 hover:bg-zinc-700 rounded-lg font-bold text-xs uppercase tracking-wider transition-colors relative overflow-hidden"
+                className="py-1.5 sm:py-3 bg-zinc-800 hover:bg-zinc-700 rounded-lg font-bold text-[9px] sm:text-xs uppercase tracking-wider transition-colors relative overflow-hidden"
               >
                 <span>2nd 12</span>
                 {getBetAmount('dozen2') > 0 && (
@@ -401,7 +401,7 @@ export default function RouletteGame({ socket, user }: RouletteGameProps) {
               </button>
               <button 
                 onClick={() => placeBet('dozen3')}
-                className="py-3 bg-zinc-800 hover:bg-zinc-700 rounded-lg font-bold text-xs uppercase tracking-wider transition-colors relative overflow-hidden"
+                className="py-1.5 sm:py-3 bg-zinc-800 hover:bg-zinc-700 rounded-lg font-bold text-[9px] sm:text-xs uppercase tracking-wider transition-colors relative overflow-hidden"
               >
                 <span>3rd 12</span>
                 {getBetAmount('dozen3') > 0 && (
@@ -412,10 +412,10 @@ export default function RouletteGame({ socket, user }: RouletteGameProps) {
               </button>
             </div>
 
-            <div className="grid grid-cols-6 gap-1 mt-1">
+            <div className="grid grid-cols-6 gap-0.5 sm:gap-1 mt-0.5 sm:mt-1">
               <button 
                 onClick={() => placeBet('low')}
-                className="py-3 bg-zinc-800 hover:bg-zinc-700 rounded-lg font-bold text-xs uppercase tracking-wider transition-colors relative overflow-hidden"
+                className="py-1.5 sm:py-3 bg-zinc-800 hover:bg-zinc-700 rounded-lg font-bold text-[9px] sm:text-xs uppercase tracking-wider transition-colors relative overflow-hidden"
               >
                 <span>1-18</span>
                 {getBetAmount('low') > 0 && (
@@ -426,7 +426,7 @@ export default function RouletteGame({ socket, user }: RouletteGameProps) {
               </button>
               <button 
                 onClick={() => placeBet('even')}
-                className="py-3 bg-zinc-800 hover:bg-zinc-700 rounded-lg font-bold text-xs uppercase tracking-wider transition-colors relative overflow-hidden"
+                className="py-1.5 sm:py-3 bg-zinc-800 hover:bg-zinc-700 rounded-lg font-bold text-[9px] sm:text-xs uppercase tracking-wider transition-colors relative overflow-hidden"
               >
                 <span>Even</span>
                 {getBetAmount('even') > 0 && (
@@ -437,7 +437,7 @@ export default function RouletteGame({ socket, user }: RouletteGameProps) {
               </button>
               <button 
                 onClick={() => placeBet('red')}
-                className="py-3 bg-red-600 hover:bg-red-500 rounded-lg font-bold text-xs uppercase tracking-wider transition-colors relative overflow-hidden"
+                className="py-1.5 sm:py-3 bg-red-600 hover:bg-red-500 rounded-lg font-bold text-[9px] sm:text-xs uppercase tracking-wider transition-colors relative overflow-hidden"
               >
                 <span>Red</span>
                 {getBetAmount('red') > 0 && (
@@ -448,7 +448,7 @@ export default function RouletteGame({ socket, user }: RouletteGameProps) {
               </button>
               <button 
                 onClick={() => placeBet('black')}
-                className="py-3 bg-zinc-950 hover:bg-zinc-900 rounded-lg font-bold text-xs uppercase tracking-wider transition-colors border border-zinc-800 relative overflow-hidden"
+                className="py-1.5 sm:py-3 bg-zinc-950 hover:bg-zinc-900 rounded-lg font-bold text-[9px] sm:text-xs uppercase tracking-wider transition-colors border border-zinc-800 relative overflow-hidden"
               >
                 <span>Black</span>
                 {getBetAmount('black') > 0 && (
@@ -459,7 +459,7 @@ export default function RouletteGame({ socket, user }: RouletteGameProps) {
               </button>
               <button 
                 onClick={() => placeBet('odd')}
-                className="py-3 bg-zinc-800 hover:bg-zinc-700 rounded-lg font-bold text-xs uppercase tracking-wider transition-colors relative overflow-hidden"
+                className="py-1.5 sm:py-3 bg-zinc-800 hover:bg-zinc-700 rounded-lg font-bold text-[9px] sm:text-xs uppercase tracking-wider transition-colors relative overflow-hidden"
               >
                 <span>Odd</span>
                 {getBetAmount('odd') > 0 && (
@@ -470,7 +470,7 @@ export default function RouletteGame({ socket, user }: RouletteGameProps) {
               </button>
               <button 
                 onClick={() => placeBet('high')}
-                className="py-3 bg-zinc-800 hover:bg-zinc-700 rounded-lg font-bold text-xs uppercase tracking-wider transition-colors relative overflow-hidden"
+                className="py-1.5 sm:py-3 bg-zinc-800 hover:bg-zinc-700 rounded-lg font-bold text-[9px] sm:text-xs uppercase tracking-wider transition-colors relative overflow-hidden"
               >
                 <span>19-36</span>
                 {getBetAmount('high') > 0 && (
@@ -483,7 +483,7 @@ export default function RouletteGame({ socket, user }: RouletteGameProps) {
           </div>
 
           {/* Recent History */}
-          <div className="bg-zinc-900/50 p-4 rounded-2xl border border-zinc-800">
+          <div className="hidden md:block bg-zinc-900/50 p-4 rounded-2xl border border-zinc-800">
             <div className="flex items-center gap-2 mb-3 text-zinc-500">
               <History className="w-4 h-4" />
               <span className="text-xs font-medium uppercase tracking-wider">Recent History</span>
@@ -508,26 +508,26 @@ export default function RouletteGame({ socket, user }: RouletteGameProps) {
   };
 
   return (
-    <div className="max-w-6xl mx-auto p-4 md:p-8">
-      <div className="flex items-center justify-between mb-8">
+    <div className="max-w-6xl mx-auto p-2 md:p-8 overflow-y-auto overflow-x-hidden w-full">
+      <div className="flex flex-wrap items-start justify-between gap-3 mb-4 md:mb-8">
         <div>
-          <h1 className="text-3xl font-black text-white tracking-tight flex items-center gap-3">
+          <h1 className="text-xl md:text-3xl font-black text-white tracking-tight flex items-center gap-3">
             ROULETTE
             <span className="px-2 py-1 bg-yellow-500 text-black text-[10px] font-bold rounded uppercase tracking-widest">Live</span>
           </h1>
-          <p className="text-zinc-500 text-sm mt-1">Classic European Roulette with 35:1 payouts</p>
+          <p className="hidden sm:block text-zinc-500 text-sm mt-1">Classic European Roulette with 35:1 payouts</p>
         </div>
         
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-2 md:gap-4">
           <div className="text-right">
             <p className="text-[10px] text-zinc-500 font-bold uppercase tracking-widest">Session Net</p>
-            <p className={`text-xl font-black font-mono ${sessionNet >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+            <p className={`text-base md:text-xl font-black font-mono ${sessionNet >= 0 ? 'text-green-400' : 'text-red-400'}`}>
               {sessionNet >= 0 ? '+' : ''}${sessionNet.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
             </p>
           </div>
           <div className="text-right">
             <p className="text-[10px] text-zinc-500 font-bold uppercase tracking-widest">Your Balance</p>
-            <p className="text-xl font-black text-white">${user?.credits.toLocaleString()}</p>
+            <p className="text-base md:text-xl font-black text-white">${user?.credits.toLocaleString()}</p>
           </div>
           <button className="p-2 bg-zinc-900 hover:bg-zinc-800 rounded-xl border border-zinc-800 transition-colors">
             <Info className="w-5 h-5 text-zinc-400" />
@@ -553,7 +553,7 @@ export default function RouletteGame({ socket, user }: RouletteGameProps) {
             {Array.from({ length: 10 }).map((_, i) => (
               <div 
                 key={i} 
-                className={`h-1.5 w-8 rounded-full transition-colors duration-500 ${i < timeLeft ? 'bg-yellow-500' : 'bg-zinc-800'}`} 
+                className={`h-1.5 flex-1 min-w-0 rounded-full transition-colors duration-500 ${i < timeLeft ? 'bg-yellow-500' : 'bg-zinc-800'}`}
               />
             ))}
           </div>
@@ -563,7 +563,7 @@ export default function RouletteGame({ socket, user }: RouletteGameProps) {
       {renderBettingTable()}
 
       {/* Active Bets List */}
-      <div className="mt-8 bg-zinc-900/30 rounded-2xl border border-zinc-800/50 overflow-hidden">
+      <div className="hidden md:block mt-8 bg-zinc-900/30 rounded-2xl border border-zinc-800/50 overflow-hidden">
         <div className="px-6 py-4 border-b border-zinc-800 flex items-center justify-between">
           <h2 className="text-sm font-bold text-white uppercase tracking-wider">Current Bets</h2>
           <span className="text-xs text-zinc-500">{currentBets.length} active bets</span>
@@ -572,8 +572,8 @@ export default function RouletteGame({ socket, user }: RouletteGameProps) {
           <table className="w-full text-left border-collapse">
             <thead className="bg-zinc-900/50 sticky top-0">
               <tr>
-                <th className="px-6 py-3 text-[10px] font-bold text-zinc-500 uppercase tracking-widest">Player</th>
-                <th className="px-6 py-3 text-[10px] font-bold text-zinc-500 uppercase tracking-widest">Bet Type</th>
+                <th className="px-3 py-2 md:px-6 md:py-3 text-[10px] font-bold text-zinc-500 uppercase tracking-widest">Player</th>
+                <th className="px-3 py-2 md:px-6 md:py-3 text-[10px] font-bold text-zinc-500 uppercase tracking-widest">Bet Type</th>
                 <th className="px-6 py-3 text-[10px] font-bold text-zinc-500 uppercase tracking-widest text-right">Amount</th>
                 <th className="px-6 py-3 text-[10px] font-bold text-zinc-500 uppercase tracking-widest text-right">Action</th>
               </tr>
@@ -581,18 +581,18 @@ export default function RouletteGame({ socket, user }: RouletteGameProps) {
             <tbody className="divide-y divide-zinc-800/50">
               {currentBets.map((bet, i) => (
                 <tr key={i} className="hover:bg-zinc-800/20 transition-colors">
-                  <td className="px-6 py-4">
+                  <td className="px-3 py-2 md:px-6 md:py-4">
                     <span className="text-sm font-medium text-zinc-300">{bet.username}</span>
                   </td>
-                  <td className="px-6 py-4">
+                  <td className="px-3 py-2 md:px-6 md:py-4">
                     <span className="text-xs font-bold text-zinc-400 uppercase tracking-wider">
                       {bet.type} {bet.value !== null && `(${bet.value})`}
                     </span>
                   </td>
-                  <td className="px-6 py-4 text-right">
+                  <td className="px-3 py-2 md:px-6 md:py-4 text-right">
                     <span className="text-sm font-bold text-yellow-500">${bet.betAmount.toLocaleString()}</span>
                   </td>
-                  <td className="px-6 py-4 text-right">
+                  <td className="px-3 py-2 md:px-6 md:py-4 text-right">
                     {user && bet.userId === user.id && gameState === 'waiting' && (
                       <button 
                         onClick={() => removeBet(bet.type, bet.value)}

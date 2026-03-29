@@ -76,7 +76,6 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ token }) => {
   };
 
   const handleAction = async (endpoint: string, method: string, body?: any) => {
-    console.log("Handling action:", endpoint, method, body);
     try {
       const res = await fetch(endpoint, {
         method,
@@ -87,7 +86,6 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ token }) => {
         body: body ? JSON.stringify(body) : undefined
       });
       const data = await res.json();
-      console.log("Action response:", data);
       if (res.ok) {
         setMessage({ text: data.message, type: 'success' });
         if (activeTab === 'users') fetchUsers();
@@ -199,7 +197,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ token }) => {
                           <div className="flex items-center justify-end gap-2">
                             <div className="flex items-center gap-1 bg-black/40 p-1 rounded-lg border border-white/5 mr-2">
                               <input
-                                type="number"
+                                type="number" inputMode="decimal"
                                 placeholder="Amount"
                                 value={customCredits[user.id] || ''}
                                 onChange={(e) => setCustomCredits({ ...customCredits, [user.id]: e.target.value })}
@@ -310,7 +308,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ token }) => {
                       <div className="flex flex-wrap gap-2">
                         <div className="flex items-center gap-1 bg-black/40 p-1 rounded-lg border border-white/5 w-full sm:w-auto">
                           <input
-                            type="number"
+                            type="number" inputMode="decimal"
                             placeholder="Amount"
                             value={customCredits[user.id] || ''}
                             onChange={(e) => setCustomCredits({ ...customCredits, [user.id]: e.target.value })}
@@ -525,7 +523,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ token }) => {
                   <div className="relative">
                     <TrendingUp className="absolute left-6 top-1/2 -translate-y-1/2 w-5 h-5 text-amber-500" />
                     <input 
-                      type="number"
+                      type="number" inputMode="decimal"
                       value={jackpotAmount}
                       onChange={(e) => setJackpotAmount(e.target.value)}
                       className="w-full bg-white/5 border border-white/10 rounded-2xl pl-14 pr-6 py-3 md:py-4 text-white focus:outline-none focus:border-amber-500/50 transition-colors font-mono text-sm"

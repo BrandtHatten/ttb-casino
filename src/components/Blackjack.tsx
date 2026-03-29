@@ -314,7 +314,7 @@ export default function Blackjack({ socket, user }: BlackjackProps) {
           <label className="text-[10px] font-black text-white/40 uppercase tracking-widest">Bet Amount</label>
           <div className="flex bg-[#0f1923] rounded-lg border border-white/5 overflow-hidden h-10">
             <input
-              type="number" value={betInput}
+              type="number" inputMode="decimal" value={betInput}
               onChange={e => setBetInput(e.target.value)}
               disabled={state.phase !== 'betting' || alreadyBet}
               className="flex-1 bg-transparent px-3 text-sm font-mono text-white focus:outline-none disabled:opacity-50"

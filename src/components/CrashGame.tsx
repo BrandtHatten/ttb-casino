@@ -201,20 +201,15 @@ export const CrashGame: React.FC<CrashGameProps> = ({ socket, user }) => {
         const stopLoss = parseFloat(currentAutoSettings.stopOnNetLoss);
         const maxGames = parseInt(currentAutoSettings.numGames);
 
-        console.log('Auto-bet check:', { currentNet, stopGain, stopLoss, latestCredits, currentStartCredits });
-
         if (stopGain > 0 && currentNet >= stopGain) {
-          console.log('Stopping on net gain');
           setIsAutoRunning(false);
           return;
         }
         if (stopLoss > 0 && currentNet <= -stopLoss) {
-          console.log('Stopping on net loss');
           setIsAutoRunning(false);
           return;
         }
         if (maxGames > 0 && currentGamesPlayed >= maxGames) {
-          console.log('Stopping on max games');
           setIsAutoRunning(false);
           return;
         }
@@ -291,6 +286,11 @@ export const CrashGame: React.FC<CrashGameProps> = ({ socket, user }) => {
       }
     });
 
+    socket.on('crash:bet_restored', (data: { betAmount: number }) => {
+      setBetAmount(data.betAmount.toFixed(2));
+      setHasBet(true);
+    });
+
     return () => {
       socket.off('crash:sync');
       socket.off('crash:tick');
@@ -299,6 +299,7 @@ export const CrashGame: React.FC<CrashGameProps> = ({ socket, user }) => {
       socket.off('crash:waiting');
       socket.off('crash:bets_update');
       socket.off('crash:cashout_success');
+      socket.off('crash:bet_restored');
       socket.off('user_data', handleUserData);
     };
   }, [socket]);
@@ -386,7 +387,7 @@ export const CrashGame: React.FC<CrashGameProps> = ({ socket, user }) => {
           <div className="flex gap-0.5">
             <div className="relative flex-1">
               <input 
-                type="number"
+                type="number" inputMode="decimal"
                 value={betAmount}
                 onChange={(e) => {
                   setBetAmount(e.target.value);
@@ -394,7 +395,7 @@ export const CrashGame: React.FC<CrashGameProps> = ({ socket, user }) => {
                 }}
                 className="w-full h-10 bg-[#0f1923] border border-white/5 rounded-l-lg pl-3 pr-8 text-xs font-mono text-white focus:outline-none focus:border-blue-500/30 transition-colors"
               />
-              <div className="absolute right-2 top-1/2 -translate-y-1/2 w-4 h-4 bg-amber-500 rounded-full flex items-center justify-center text-[8px] font-black text-black">G</div>
+              <Coins className="absolute right-2 top-1/2 -translate-y-1/2 w-4 h-4 text-amber-500" />
             </div>
             <button 
               onClick={() => {
@@ -424,7 +425,7 @@ export const CrashGame: React.FC<CrashGameProps> = ({ socket, user }) => {
           <label className="text-[10px] font-black text-white/40 uppercase tracking-widest px-1">Cashout At</label>
           <div className="flex gap-0.5">
             <input 
-              type="number"
+              type="number" inputMode="decimal"
               step="0.01"
               value={autoCashout}
               onChange={(e) => setAutoCashout(e.target.value)}
@@ -461,7 +462,7 @@ export const CrashGame: React.FC<CrashGameProps> = ({ socket, user }) => {
             <div className="space-y-1.5">
               <label className="text-[10px] font-black text-white/40 uppercase tracking-widest px-1">Number of Games (0 = ∞)</label>
               <input 
-                type="number"
+                type="number" inputMode="decimal"
                 value={autoSettings.numGames}
                 onChange={(e) => setAutoSettings(prev => ({ ...prev, numGames: e.target.value }))}
                 className="w-full h-10 bg-[#0f1923] border border-white/5 rounded-lg px-3 text-xs font-mono text-white focus:outline-none focus:border-blue-500/30 transition-colors"
@@ -473,7 +474,7 @@ export const CrashGame: React.FC<CrashGameProps> = ({ socket, user }) => {
               <label className="text-[10px] font-black text-white/40 uppercase tracking-widest px-1">Net Gain on Win</label>
               <div className="relative">
                 <input 
-                  type="number"
+                  type="number" inputMode="decimal"
                   value={autoCashout ? (parseFloat(betAmount) * (parseFloat(autoCashout) - 1)).toFixed(2) : ''}
                   onChange={(e) => {
                     const gain = parseFloat(e.target.value);
@@ -484,7 +485,7 @@ export const CrashGame: React.FC<CrashGameProps> = ({ socket, user }) => {
                   }}
                   className="w-full h-10 bg-[#0f1923] border border-white/5 rounded-lg pl-3 pr-8 text-xs font-mono text-white focus:outline-none focus:border-blue-500/30 transition-colors"
                 />
-                <div className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 bg-amber-500 rounded-full flex items-center justify-center text-[8px] font-black text-black">G</div>
+                <Coins className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-amber-500" />
               </div>
             </div>
 
@@ -533,7 +534,7 @@ export const CrashGame: React.FC<CrashGameProps> = ({ socket, user }) => {
                   {autoSettings.onWin.action === 'increase' && (
                     <div className="relative">
                       <input 
-                        type="number"
+                        type="number" inputMode="decimal"
                         value={autoSettings.onWin.value}
                         onChange={(e) => setAutoSettings(prev => ({ ...prev, onWin: { ...prev.onWin, value: e.target.value } }))}
                         className="w-full h-8 bg-[#0f1923] border border-white/5 rounded-lg px-3 text-[10px] font-mono text-white focus:outline-none"
@@ -569,7 +570,7 @@ export const CrashGame: React.FC<CrashGameProps> = ({ socket, user }) => {
                   {autoSettings.onLoss.action === 'increase' && (
                     <div className="relative">
                       <input 
-                        type="number"
+                        type="number" inputMode="decimal"
                         value={autoSettings.onLoss.value}
                         onChange={(e) => setAutoSettings(prev => ({ ...prev, onLoss: { ...prev.onLoss, value: e.target.value } }))}
                         className="w-full h-8 bg-[#0f1923] border border-white/5 rounded-lg px-3 text-[10px] font-mono text-white focus:outline-none"
@@ -584,7 +585,7 @@ export const CrashGame: React.FC<CrashGameProps> = ({ socket, user }) => {
                   <div className="space-y-1.5">
                     <label className="text-[9px] font-black text-white/40 uppercase tracking-widest px-1">Stop on Gain</label>
                     <input 
-                      type="number"
+                      type="number" inputMode="decimal"
                       value={autoSettings.stopOnNetGain}
                       onChange={(e) => setAutoSettings(prev => ({ ...prev, stopOnNetGain: e.target.value }))}
                       className="w-full h-8 bg-[#0f1923] border border-white/5 rounded-lg px-2 text-[10px] font-mono text-white focus:outline-none"
@@ -593,7 +594,7 @@ export const CrashGame: React.FC<CrashGameProps> = ({ socket, user }) => {
                   <div className="space-y-1.5">
                     <label className="text-[9px] font-black text-white/40 uppercase tracking-widest px-1">Stop on Loss</label>
                     <input 
-                      type="number"
+                      type="number" inputMode="decimal"
                       value={autoSettings.stopOnNetLoss}
                       onChange={(e) => setAutoSettings(prev => ({ ...prev, stopOnNetLoss: e.target.value }))}
                       className="w-full h-8 bg-[#0f1923] border border-white/5 rounded-lg px-2 text-[10px] font-mono text-white focus:outline-none"
@@ -662,7 +663,7 @@ export const CrashGame: React.FC<CrashGameProps> = ({ socket, user }) => {
               <span className="text-[11px] font-black">{bets.length}</span>
             </div>
             <div className="flex items-center gap-2">
-              <div className="w-3.5 h-3.5 bg-amber-500 rounded-full flex items-center justify-center text-[7px] font-black text-black">G</div>
+              <Coins className="w-3.5 h-3.5 text-amber-500" />
               <span className="text-[11px] font-mono font-black text-white/60">{totalBet.toLocaleString()}</span>
               <div className="w-[1px] h-3 bg-white/10 mx-1" />
               <TrendingUp className="w-3 h-3 text-white/10 rotate-180" />
@@ -698,7 +699,7 @@ export const CrashGame: React.FC<CrashGameProps> = ({ socket, user }) => {
 
         <div className="flex-1 flex flex-col lg:flex-row lg:overflow-hidden">
           {/* Graph Area */}
-          <div className="flex-1 relative min-h-[300px] lg:min-h-0 overflow-hidden bg-[#0f1923]" ref={graphRef}>
+          <div className="flex-1 relative min-h-[200px] md:min-h-[300px] lg:min-h-0 overflow-hidden bg-[#0f1923]" ref={graphRef}>
             {/* Multiplier Display */}
             <div className="absolute inset-0 flex flex-col items-center justify-center z-20 pointer-events-none">
               <AnimatePresence mode="wait">

@@ -1,8 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { 
-  Settings, 
-  Play, 
+import {
+  Settings,
+  Play,
   Coins,
   TrendingUp,
   History as HistoryIcon,
@@ -11,11 +11,12 @@ import {
   RotateCcw,
   Target,
   Trophy,
-  ChevronDown
+  ChevronDown,
+  StopCircle,
+  RefreshCw
 } from 'lucide-react';
 import { cn } from '../../../lib/utils';
 import { useWheel, RiskLevel } from './useWheel';
-import confetti from 'canvas-confetti';
 
 interface WheelGameProps {
   balance: number;
@@ -25,6 +26,10 @@ interface WheelGameProps {
 }
 
 export const WheelGame: React.FC<WheelGameProps> = ({ balance, setBalance, socket, user }) => {
+  const [turboMode, setTurboMode] = useState(false);
+  const turboModeRef = useRef(false);
+  useEffect(() => { turboModeRef.current = turboMode; }, [turboMode]);
+
   const {
     betAmount,
     setBetAmount,
@@ -34,26 +39,36 @@ export const WheelGame: React.FC<WheelGameProps> = ({ balance, setBalance, socke
     spin,
     rotation,
     lastResult,
-    segments
-  } = useWheel(balance, setBalance);
+    segments,
+    spinDuration,
+  } = useWheel(balance, setBalance, turboMode, socket);
 
   const [history, setHistory] = useState<any[]>([]);
   const [sessionNet, setSessionNet] = useState(0);
 
-  // Update history, session net, and emit socket events when spin completes
+  // Autobet state
+  const [autobetEnabled, setAutobetEnabled] = useState(false);
+  const [autobetRounds, setAutobetRounds] = useState('0');
+  const [autobetStopProfit, setAutobetStopProfit] = useState('');
+  const [autobetStopLoss, setAutobetStopLoss] = useState('');
+  const [autobetCompleted, setAutobetCompleted] = useState(0);
+  const [autobetNet, setAutobetNet] = useState(0);
+  const autobetRef = useRef({ active: false, completed: 0, net: 0 });
+  const betAmountRef = useRef(betAmount);
+  useEffect(() => { betAmountRef.current = betAmount; }, [betAmount]);
+  const autobetRoundsRef = useRef(0);
+  const autobetStopProfitRef = useRef(0);
+  const autobetStopLossRef = useRef(0);
+  useEffect(() => { autobetRoundsRef.current = parseInt(autobetRounds) || 0; }, [autobetRounds]);
+  useEffect(() => { autobetStopProfitRef.current = parseFloat(autobetStopProfit) || 0; }, [autobetStopProfit]);
+  useEffect(() => { autobetStopLossRef.current = parseFloat(autobetStopLoss) || 0; }, [autobetStopLoss]);
+
+  // Update history, session net, emit socket events, and handle autobet on spin complete
   useEffect(() => {
     if (lastResult !== null) {
-      const winAmount = betAmount * lastResult;
-      const net = winAmount - betAmount;
+      const winAmount = betAmountRef.current * lastResult;
+      const net = winAmount - betAmountRef.current;
       setSessionNet(prev => prev + net);
-
-      if (socket) {
-        socket.emit('wheel:result', { betAmount, multiplier: lastResult, winAmount, won: lastResult > 0 });
-      }
-
-      if (lastResult >= 5) {
-        confetti({ particleCount: 80, spread: 60, origin: { y: 0.6 } });
-      }
 
       const newEntry = {
         id: Date.now(),
@@ -63,23 +78,51 @@ export const WheelGame: React.FC<WheelGameProps> = ({ balance, setBalance, socke
         isWin: lastResult > 1
       };
       setHistory(prev => [newEntry, ...prev].slice(0, 10));
+
+      // Autobet logic
+      const ab = autobetRef.current;
+      if (ab.active) {
+        ab.completed += 1;
+        ab.net += net;
+        setAutobetCompleted(ab.completed);
+        setAutobetNet(Math.round(ab.net * 100) / 100);
+
+        const hitRoundLimit = autobetRoundsRef.current > 0 && ab.completed >= autobetRoundsRef.current;
+        const hitProfitStop = autobetStopProfitRef.current > 0 && ab.net >= autobetStopProfitRef.current;
+        const hitLossStop = autobetStopLossRef.current > 0 && ab.net <= -autobetStopLossRef.current;
+
+        if (hitRoundLimit || hitProfitStop || hitLossStop) {
+          ab.active = false;
+          setAutobetEnabled(false);
+        } else {
+          const delay = turboModeRef.current ? 100 : 600;
+          setTimeout(() => {
+            if (autobetRef.current.active) spin();
+          }, delay);
+        }
+      }
     }
   }, [lastResult]);
 
-  // Emit wheel:spin when a spin starts (isSpinning transitions to true)
-  const prevSpinning = React.useRef(false);
-  useEffect(() => {
-    if (isSpinning && !prevSpinning.current && socket) {
-      socket.emit('wheel:spin', { betAmount });
-    }
-    prevSpinning.current = isSpinning;
-  }, [isSpinning]);
+
+  const handleStartAutobet = () => {
+    autobetRef.current = { active: true, completed: 0, net: 0 };
+    setAutobetCompleted(0);
+    setAutobetNet(0);
+    setAutobetEnabled(true);
+    spin();
+  };
+
+  const handleStopAutobet = () => {
+    autobetRef.current.active = false;
+    setAutobetEnabled(false);
+  };
 
   return (
     <div className="flex-1 flex flex-col lg:flex-row gap-6 p-4 md:p-8 max-w-7xl mx-auto w-full overflow-y-auto custom-scrollbar">
       {/* Sidebar Controls */}
       <div className="w-full lg:w-80 flex flex-col gap-4">
-        <div className="bg-[#1a1c23] border border-white/5 rounded-[2rem] p-6 shadow-2xl space-y-6">
+        <div className="bg-[#1a1c23] border border-white/5 rounded-[2rem] p-4 lg:p-6 shadow-2xl space-y-3 lg:space-y-6">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <div className="p-2 bg-amber-500/10 rounded-lg">
@@ -112,24 +155,24 @@ export const WheelGame: React.FC<WheelGameProps> = ({ balance, setBalance, socke
               <div className="absolute left-4 top-1/2 -translate-y-1/2 p-1.5 bg-white/5 rounded-lg group-focus-within:bg-amber-500/10 transition-colors">
                 <Coins className="w-4 h-4 text-white/40 group-focus-within:text-amber-500 transition-colors" />
               </div>
-              <input 
-                type="number"
+              <input
+                type="number" inputMode="decimal"
                 value={betAmount}
                 onChange={(e) => setBetAmount(Math.max(1, Number(e.target.value)))}
-                disabled={isSpinning}
+                disabled={isSpinning || autobetRef.current.active}
                 className="w-full bg-white/5 border border-white/10 rounded-2xl pl-14 pr-6 py-4 text-white font-bold focus:outline-none focus:border-amber-500/50 transition-all disabled:opacity-50 appearance-none"
               />
               <div className="absolute right-2 top-1/2 -translate-y-1/2 flex gap-1">
-                <button 
+                <button
                   onClick={() => setBetAmount(Math.max(1, Math.floor(betAmount / 2)))}
-                  disabled={isSpinning}
+                  disabled={isSpinning || autobetRef.current.active}
                   className="px-3 py-2 bg-white/5 hover:bg-white/10 rounded-xl text-[10px] font-black text-white/40 uppercase transition-colors disabled:opacity-50"
                 >
                   1/2
                 </button>
-                <button 
+                <button
                   onClick={() => setBetAmount(betAmount * 2)}
-                  disabled={isSpinning}
+                  disabled={isSpinning || autobetRef.current.active}
                   className="px-3 py-2 bg-white/5 hover:bg-white/10 rounded-xl text-[10px] font-black text-white/40 uppercase transition-colors disabled:opacity-50"
                 >
                   2x
@@ -149,11 +192,11 @@ export const WheelGame: React.FC<WheelGameProps> = ({ balance, setBalance, socke
                 <button
                   key={level}
                   onClick={() => setRisk(level)}
-                  disabled={isSpinning}
+                  disabled={isSpinning || autobetRef.current.active}
                   className={cn(
                     "py-2 rounded-xl text-xs font-black transition-all disabled:opacity-50 uppercase tracking-tighter",
-                    risk === level 
-                      ? "bg-amber-500 text-black shadow-[0_0_15px_rgba(245,158,11,0.3)]" 
+                    risk === level
+                      ? "bg-amber-500 text-black shadow-[0_0_15px_rgba(245,158,11,0.3)]"
                       : "bg-white/5 text-white/40 hover:bg-white/10"
                   )}
                 >
@@ -163,30 +206,171 @@ export const WheelGame: React.FC<WheelGameProps> = ({ balance, setBalance, socke
             </div>
           </div>
 
-          {/* Action Buttons */}
-          <div className="pt-4">
-            <button 
-              onClick={spin}
-              disabled={isSpinning || balance < betAmount}
-              className="w-full py-5 bg-amber-500 hover:bg-amber-400 text-black font-black rounded-2xl transition-all shadow-lg active:scale-95 text-lg uppercase tracking-wider flex items-center justify-center gap-3 disabled:opacity-50 disabled:grayscale"
-            >
-              {isSpinning ? (
-                <>
-                  <RotateCcw className="w-6 h-6 animate-spin" />
-                  Spinning...
-                </>
-              ) : (
-                <>
-                  <Play className="w-6 h-6 fill-current" />
-                  Spin Wheel
-                </>
+          {/* Turbo Mode */}
+          <div className="flex items-center justify-between px-1">
+            <div className="flex items-center gap-2">
+              <span className="text-[10px] font-black text-white/20 uppercase tracking-widest">Turbo Mode</span>
+              {turboMode && (
+                <span className="text-[9px] font-black uppercase tracking-widest text-yellow-400 bg-yellow-400/10 border border-yellow-400/20 px-1.5 py-0.5 rounded-full">
+                  ⚡ Fast
+                </span>
               )}
+            </div>
+            <button
+              onClick={() => setTurboMode(t => !t)}
+              className={cn(
+                "relative w-10 h-5 rounded-full transition-colors duration-200 overflow-hidden flex-shrink-0",
+                turboMode ? "bg-yellow-500" : "bg-white/10"
+              )}
+            >
+              <span className={cn(
+                "absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-all duration-200",
+                turboMode ? "left-[22px]" : "left-0.5"
+              )} />
             </button>
+          </div>
+
+          {/* Auto Bet Toggle */}
+          <div className="flex items-center justify-between px-1">
+            <span className="text-[10px] font-black text-white/20 uppercase tracking-widest">Auto Bet</span>
+            <button
+              onClick={() => {
+                if (autobetRef.current.active) return;
+                setAutobetEnabled(v => !v);
+              }}
+              disabled={autobetRef.current.active}
+              className={cn(
+                "relative w-10 h-5 rounded-full transition-colors duration-200 disabled:opacity-60 overflow-hidden flex-shrink-0",
+                autobetEnabled ? "bg-amber-500" : "bg-white/10"
+              )}
+            >
+              <span className={cn(
+                "absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-all duration-200",
+                autobetEnabled ? "left-[22px]" : "left-0.5"
+              )} />
+            </button>
+          </div>
+
+          {/* Autobet Settings */}
+          <AnimatePresence>
+            {autobetEnabled && (
+              <motion.div
+                initial={{ opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: 'auto' }}
+                exit={{ opacity: 0, height: 0 }}
+                className="overflow-hidden space-y-3"
+              >
+                <div className="grid grid-cols-3 gap-2">
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-black text-white/30 uppercase tracking-widest">Rounds</label>
+                    <input
+                      type="number" inputMode="decimal"
+                      value={autobetRounds}
+                      onChange={e => setAutobetRounds(e.target.value)}
+                      disabled={autobetRef.current.active}
+                      placeholder="∞"
+                      min="0"
+                      className="w-full bg-white/5 border border-white/10 rounded-lg px-2 py-2 text-sm font-mono text-white focus:outline-none focus:border-amber-500/50 disabled:opacity-50"
+                    />
+                    <div className="text-[9px] text-white/20 px-1">0 = ∞</div>
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-black text-white/30 uppercase tracking-widest">Stop +</label>
+                    <input
+                      type="number" inputMode="decimal"
+                      value={autobetStopProfit}
+                      onChange={e => setAutobetStopProfit(e.target.value)}
+                      disabled={autobetRef.current.active}
+                      placeholder="0"
+                      min="0"
+                      className="w-full bg-white/5 border border-white/10 rounded-lg px-2 py-2 text-sm font-mono text-white focus:outline-none focus:border-emerald-500/50 disabled:opacity-50"
+                    />
+                    <div className="text-[9px] text-white/20 px-1">profit</div>
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-black text-white/30 uppercase tracking-widest">Stop -</label>
+                    <input
+                      type="number" inputMode="decimal"
+                      value={autobetStopLoss}
+                      onChange={e => setAutobetStopLoss(e.target.value)}
+                      disabled={autobetRef.current.active}
+                      placeholder="0"
+                      min="0"
+                      className="w-full bg-white/5 border border-white/10 rounded-lg px-2 py-2 text-sm font-mono text-white focus:outline-none focus:border-red-500/50 disabled:opacity-50"
+                    />
+                    <div className="text-[9px] text-white/20 px-1">loss</div>
+                  </div>
+                </div>
+
+                {autobetRef.current.active && (
+                  <div className="flex items-center justify-between bg-white/5 rounded-xl px-4 py-2.5 border border-white/5">
+                    <div className="flex items-center gap-1">
+                      <span className="text-[10px] font-bold text-white/40 uppercase tracking-widest">Round</span>
+                      <span className="text-sm font-black text-white font-mono">{autobetCompleted}</span>
+                      {parseInt(autobetRounds) > 0 && (
+                        <span className="text-xs text-white/30">/ {autobetRounds}</span>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <span className="text-[10px] font-bold text-white/40 uppercase tracking-widest">Net</span>
+                      <span className={cn(
+                        "text-sm font-black font-mono",
+                        autobetNet >= 0 ? "text-emerald-400" : "text-red-400"
+                      )}>
+                        {autobetNet >= 0 ? '+' : ''}{autobetNet.toFixed(2)}
+                      </span>
+                    </div>
+                  </div>
+                )}
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          {/* Action Buttons */}
+          <div className="pt-2 lg:pt-4 space-y-2">
+            {autobetEnabled ? (
+              autobetRef.current.active ? (
+                <button
+                  onClick={handleStopAutobet}
+                  className="w-full py-5 bg-red-500 hover:bg-red-400 text-white font-black rounded-2xl transition-all shadow-lg active:scale-95 text-lg uppercase tracking-wider flex items-center justify-center gap-3"
+                >
+                  <StopCircle className="w-6 h-6" />
+                  Stop Auto
+                </button>
+              ) : (
+                <button
+                  onClick={handleStartAutobet}
+                  disabled={balance < betAmount}
+                  className="w-full py-5 bg-amber-500 hover:bg-amber-400 text-black font-black rounded-2xl transition-all shadow-lg active:scale-95 text-lg uppercase tracking-wider flex items-center justify-center gap-3 disabled:opacity-50 disabled:grayscale"
+                >
+                  <RefreshCw className="w-6 h-6" />
+                  Start Auto
+                </button>
+              )
+            ) : (
+              <button
+                onClick={spin}
+                disabled={isSpinning || balance < betAmount}
+                className="w-full py-5 bg-amber-500 hover:bg-amber-400 text-black font-black rounded-2xl transition-all shadow-lg active:scale-95 text-lg uppercase tracking-wider flex items-center justify-center gap-3 disabled:opacity-50 disabled:grayscale"
+              >
+                {isSpinning ? (
+                  <>
+                    <RotateCcw className="w-6 h-6 animate-spin" />
+                    Spinning...
+                  </>
+                ) : (
+                  <>
+                    <Play className="w-6 h-6 fill-current" />
+                    Spin Wheel
+                  </>
+                )}
+              </button>
+            )}
           </div>
         </div>
 
         {/* Game Stats */}
-        <div className="bg-[#1a1c23] border border-white/5 rounded-[2rem] p-6 shadow-2xl space-y-4">
+        <div className="hidden lg:block bg-[#1a1c23] border border-white/5 rounded-[2rem] p-6 shadow-2xl space-y-4">
           <div className="flex items-center gap-2">
             <div className="p-2 bg-emerald-500/10 rounded-lg">
               <Activity className="w-4 h-4 text-emerald-500" />
@@ -210,7 +394,7 @@ export const WheelGame: React.FC<WheelGameProps> = ({ balance, setBalance, socke
 
       {/* Main Game Area */}
       <div className="flex-1 flex flex-col gap-6">
-        <div className="flex-1 bg-[#1a1c23] border border-white/5 rounded-[2.5rem] p-8 md:p-12 shadow-2xl flex flex-col items-center justify-center relative overflow-hidden">
+        <div className="flex-1 bg-[#1a1c23] border border-white/5 rounded-[2.5rem] p-4 md:p-8 lg:p-12 shadow-2xl flex flex-col items-center justify-center relative overflow-hidden">
           {/* Background Elements */}
           <div className="absolute top-0 left-0 w-full h-full pointer-events-none">
             <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-amber-500/5 rounded-full blur-[120px]" />
@@ -232,56 +416,54 @@ export const WheelGame: React.FC<WheelGameProps> = ({ balance, setBalance, socke
 
             {/* Wheel Container */}
             <div className="w-full h-full rounded-full relative p-4 z-10">
-              <motion.div 
+              <div
                 className="w-full h-full"
-                animate={{ rotate: rotation }}
-                transition={{ duration: 4, ease: [0.32, 0.01, 0.1, 1] }}
+                style={{
+                  transform: `rotate(${rotation}deg)`,
+                  transition: isSpinning ? `transform ${spinDuration / 1000}s cubic-bezier(0.32, 0.01, 0.1, 1)` : 'none',
+                  willChange: 'transform',
+                }}
               >
-                <svg viewBox="0 0 100 100" className="w-full h-full -rotate-90 overflow-visible">
+                <svg viewBox="0 0 100 100" className="w-full h-full -rotate-90">
                   {segments.map((segment, index) => {
                     const angle = 360 / segments.length;
                     const startAngle = index * angle;
                     const endAngle = (index + 1) * angle;
-                    
-                    // Path coordinates
+
                     const x1 = 50 + 50 * Math.cos((Math.PI * startAngle) / 180);
                     const y1 = 50 + 50 * Math.sin((Math.PI * startAngle) / 180);
                     const x2 = 50 + 50 * Math.cos((Math.PI * endAngle) / 180);
                     const y2 = 50 + 50 * Math.sin((Math.PI * endAngle) / 180);
-                    
+
                     const largeArcFlag = angle > 180 ? 1 : 0;
                     const d = `M 50 50 L ${x1} ${y1} A 50 50 0 ${largeArcFlag} 1 ${x2} ${y2} Z`;
-                    
-                    // Label coordinates
+
                     const labelAngle = startAngle + angle / 2;
                     const labelRadius = 38;
                     const labelX = 50 + labelRadius * Math.cos((Math.PI * labelAngle) / 180);
                     const labelY = 50 + labelRadius * Math.sin((Math.PI * labelAngle) / 180);
-                    
-                    // Peg coordinates
+
                     const pegRadius = 48;
                     const pegX = 50 + pegRadius * Math.cos((Math.PI * startAngle) / 180);
                     const pegY = 50 + pegRadius * Math.sin((Math.PI * startAngle) / 180);
-                    
+
                     return (
                       <g key={index}>
-                        <path 
-                          d={d} 
-                          fill={segment.color} 
-                          stroke="#1a1c23" 
+                        <path
+                          d={d}
+                          fill={segment.color}
+                          stroke="#1a1c23"
                           strokeWidth="0.8"
                           style={{ opacity: 0.85 }}
                         />
-                        {/* Peg */}
-                        <circle 
-                          cx={pegX} 
-                          cy={pegY} 
-                          r="1.2" 
-                          fill="#444" 
-                          stroke="#000" 
-                          strokeWidth="0.2" 
+                        <circle
+                          cx={pegX}
+                          cy={pegY}
+                          r="1.2"
+                          fill="#444"
+                          stroke="#000"
+                          strokeWidth="0.2"
                         />
-                        {/* Multiplier Text */}
                         <g transform={`rotate(${labelAngle + 90}, ${labelX}, ${labelY})`}>
                           <text
                             x={labelX}
@@ -291,7 +473,7 @@ export const WheelGame: React.FC<WheelGameProps> = ({ balance, setBalance, socke
                             fontWeight="900"
                             textAnchor="middle"
                             dominantBaseline="middle"
-                            style={{ 
+                            style={{
                               textShadow: '0 1px 3px rgba(0,0,0,0.8)',
                               fontFamily: 'Inter, sans-serif'
                             }}
@@ -303,12 +485,12 @@ export const WheelGame: React.FC<WheelGameProps> = ({ balance, setBalance, socke
                     );
                   })}
                 </svg>
-              </motion.div>
-              
+              </div>
+
               {/* Inner Circle Decoration */}
               <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-32 h-32 bg-[#1a1c23] rounded-full border-[10px] border-white/5 flex items-center justify-center z-20 shadow-[0_0_40px_rgba(0,0,0,0.6)]">
-                <div className="w-16 h-16 bg-amber-500/10 rounded-full flex items-center justify-center border border-amber-500/20 relative group">
-                  <div className="absolute inset-0 bg-amber-500/20 rounded-full blur-xl animate-pulse" />
+                <div className="w-16 h-16 bg-amber-500/10 rounded-full flex items-center justify-center border border-amber-500/20 relative">
+                  <div className="absolute inset-0 bg-amber-500/20 rounded-full blur-xl" />
                   <Zap className="w-8 h-8 text-amber-500 drop-shadow-[0_0_15px_rgba(245,158,11,0.6)] relative z-10" />
                 </div>
               </div>
@@ -334,7 +516,7 @@ export const WheelGame: React.FC<WheelGameProps> = ({ balance, setBalance, socke
         </div>
 
         {/* History Section */}
-        <div className="bg-[#1a1c23] border border-white/5 rounded-[2rem] p-6 shadow-2xl">
+        <div className="hidden lg:block bg-[#1a1c23] border border-white/5 rounded-[2rem] p-6 shadow-2xl">
           <div className="flex items-center justify-between mb-6">
             <div className="flex items-center gap-2">
               <div className="p-2 bg-amber-500/10 rounded-lg">
@@ -351,12 +533,12 @@ export const WheelGame: React.FC<WheelGameProps> = ({ balance, setBalance, socke
               </div>
             ) : (
               history.map((game) => (
-                <div 
+                <div
                   key={game.id}
                   className={cn(
                     "flex-shrink-0 px-4 py-3 rounded-2xl border flex flex-col items-center gap-1",
-                    game.isWin 
-                      ? "bg-emerald-500/5 border-emerald-500/20" 
+                    game.isWin
+                      ? "bg-emerald-500/5 border-emerald-500/20"
                       : "bg-red-500/5 border-red-500/20"
                   )}
                 >

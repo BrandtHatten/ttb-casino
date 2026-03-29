@@ -64,7 +64,7 @@ export const ACHIEVEMENTS: Achievement[] = [
     description: 'Reach a balance of $0',
     icon: Skull,
     color: 'text-red-400',
-    requirement: (stats) => stats.credits <= 0 && stats.total_bets > 0
+    requirement: (stats) => stats.credits <= 0.01 && stats.total_bets > 0
   },
   {
     id: 'interest_collector',

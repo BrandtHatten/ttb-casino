@@ -981,17 +981,18 @@ export default function App() {
                   setProvablyFairRounds(Array.isArray(data) ? data : []);
                   setShowProvablyFair(true);
                 } catch {}
-              }} className="w-8 h-8 md:w-9 md:h-9 rounded-xl bg-white/5 border border-white/10 flex items-center justify-center text-emerald-400/60 hover:text-emerald-400 hover:bg-emerald-500/10 transition-all order-1 md:order-2">
+              }} className="w-8 h-8 md:w-9 md:h-9 rounded-xl bg-white/5 border border-white/10 flex items-center justify-center text-emerald-400/60 hover:text-emerald-400 hover:bg-emerald-500/10 transition-all order-1 md:order-2" aria-label="Provably fair">
                 <Shield className="w-3.5 h-3.5 md:w-4 md:h-4" />
               </button>
             )}
             
-            <button 
+            <button
               className="xl:hidden p-2 text-white relative order-2 md:order-3 mr-2 md:mr-0"
               onClick={() => {
                 setIsMobileChatOpen(true);
                 setHasUnreadMessages(false);
               }}
+              aria-label="Open chat"
             >
               <MessageSquare className="w-6 h-6 -scale-x-100" />
               {hasUnreadMessages && (
@@ -1009,7 +1010,7 @@ export default function App() {
             initial={{ opacity: 0, x: 100, scale: 0.8 }}
             animate={{ opacity: 1, x: 0, scale: 1 }}
             exit={{ opacity: 0, x: 100, scale: 0.8 }}
-            className="fixed top-24 right-4 z-[100] bg-[#1a1c23] border border-yellow-500/50 p-4 rounded-2xl shadow-2xl shadow-yellow-500/10 flex items-center gap-4 min-w-[300px]"
+            className="fixed top-20 right-2 left-2 sm:left-auto sm:right-4 z-[100] bg-[#1a1c23] border border-yellow-500/50 p-3 sm:p-4 rounded-2xl shadow-2xl shadow-yellow-500/10 flex items-center gap-3 sm:gap-4 sm:min-w-[300px]"
           >
             <div className={cn("p-3 rounded-xl bg-black/40 border border-white/10", unlockedAchievement.color)}>
               <unlockedAchievement.icon className="w-6 h-6" />
@@ -1047,8 +1048,8 @@ export default function App() {
                   <div className="flex items-center justify-between">
                     <span className="text-[10px] font-bold text-white/60 truncate max-w-[100px]">{activity.username}</span>
                     <div className="flex items-center gap-1.5">
-                      {activity.game && <span className="text-[8px] font-bold text-white/30 uppercase tracking-widest">{activity.game}</span>}
-                      <span className="text-[8px] text-white/20">{new Date(activity.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                      {activity.game && <span className="text-[8px] font-bold text-white/50 uppercase tracking-widest">{activity.game}</span>}
+                      <span className="text-[8px] text-white/40">{new Date(activity.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
                     </div>
                   </div>
                   <div className="flex items-center justify-between">
@@ -1454,7 +1455,7 @@ export default function App() {
               <span className="font-mono font-bold text-[10px] md:text-sm whitespace-nowrap text-amber-300">${jackpot.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
             </div>
             <div className="bg-black/60 border border-white/10 px-2 md:px-3 py-1 rounded-full flex items-center gap-1 md:gap-2 shrink-0 shadow-inner">
-              <span className="text-[8px] md:text-[10px] font-black text-white/30 uppercase tracking-widest hidden sm:block">Net</span>
+              <span className="text-[10px] md:text-[10px] font-black text-white/40 uppercase tracking-widest hidden sm:block">Net</span>
               <span className={`font-mono font-bold text-[10px] md:text-base whitespace-nowrap ${sessionNet >= 0 ? 'text-green-400' : 'text-red-400'}`}>
                 {sessionNet >= 0 ? '+' : ''}${sessionNet.toFixed(2)}
               </span>
@@ -1496,16 +1497,17 @@ export default function App() {
           </div>
 
           <div className="flex items-center gap-1 pr-1 shrink-0">
-            <button 
+            <button
               onClick={() => setIsMuted(!isMuted)}
               className="p-1 md:p-2 bg-white/5 hover:bg-white/10 rounded-full transition-colors"
+              aria-label={isMuted ? "Unmute sounds" : "Mute sounds"}
             >
               {isMuted ? <VolumeX className="w-3 h-3 md:w-5 md:h-5 text-red-400" /> : <Volume2 className="w-3 h-3 md:w-5 md:h-5 text-white" />}
             </button>
-            <button className="p-1 md:p-2 bg-white/5 hover:bg-white/10 rounded-full transition-colors">
+            <button className="p-1 md:p-2 bg-white/5 hover:bg-white/10 rounded-full transition-colors" aria-label="Settings">
               <Settings className="w-3 h-3 md:w-5 md:h-5" />
             </button>
-            <button className="p-1 md:p-2 bg-white/5 hover:bg-white/10 rounded-full transition-colors">
+            <button className="p-1 md:p-2 bg-white/5 hover:bg-white/10 rounded-full transition-colors" aria-label="Game info">
               <Info className="w-3 h-3 md:w-5 md:h-5" />
             </button>
           </div>
@@ -1566,7 +1568,7 @@ export default function App() {
           </div>
         </div>
 
-        <div className="relative w-full max-w-[500px] lg:max-w-[600px] flex-1 flex items-center justify-center overflow-hidden">
+        <div className="relative w-full max-w-[340px] sm:max-w-[420px] md:max-w-[500px] lg:max-w-[600px] flex-1 flex items-center justify-center overflow-hidden">
           <div className="relative bg-purple-900/40 backdrop-blur-2xl p-2 md:p-6 rounded-2xl md:rounded-[2.5rem] border border-white/20 shadow-[0_0_50px_rgba(0,0,0,0.5)] overflow-hidden isolation-isolate w-full max-h-full aspect-[6/5]">
             <div className="grid grid-cols-6 grid-rows-5 gap-1 md:gap-3 relative h-full w-full place-items-center">
             <AnimatePresence initial={false}>
@@ -1640,8 +1642,8 @@ export default function App() {
                 isBetError ? "border-red-500" : "border-white/10 focus-within:border-yellow-400/50"
               )}>
                 <span className={cn("font-black text-xs md:text-base", isBetError ? "text-red-400" : "text-yellow-400")}>$</span>
-                <input 
-                  type="number"
+                <input
+                  type="number" inputMode="decimal"
                   value={bet === 0 ? "" : bet}
                   disabled={isSpinning || isFreeSpinMode}
                   onChange={(e) => {
@@ -1751,9 +1753,9 @@ export default function App() {
       </div>
 
       {/* Decorative Candies */}
-      <div className="absolute top-20 left-10 w-16 h-16 bg-pink-500/20 rounded-full blur-2xl animate-float" />
-      <div className="absolute bottom-40 right-20 w-24 h-24 bg-purple-500/20 rounded-full blur-3xl animate-float" style={{ animationDelay: '1s' }} />
-      <div className="absolute top-1/2 left-1/4 w-12 h-12 bg-blue-500/10 rounded-full blur-xl animate-float" style={{ animationDelay: '2s' }} />
+      <div className="hidden md:block absolute top-20 left-10 w-16 h-16 bg-pink-500/20 rounded-full blur-2xl animate-float" />
+      <div className="hidden md:block absolute bottom-40 right-20 w-24 h-24 bg-purple-500/20 rounded-full blur-3xl animate-float" style={{ animationDelay: '1s' }} />
+      <div className="hidden md:block absolute top-1/2 left-1/4 w-12 h-12 bg-blue-500/10 rounded-full blur-xl animate-float" style={{ animationDelay: '2s' }} />
     </div>
 
       {/* Free Spins Summary Popup - Global Modal */}
@@ -1935,7 +1937,7 @@ export default function App() {
               <div ref={chatEndRef} />
             </div>
 
-            <div className="p-4 border-t border-white/5 bg-black/60 pb-8">
+            <div className="p-4 border-t border-white/5 bg-black/60" style={{ paddingBottom: 'max(2rem, env(safe-area-inset-bottom))' }}>
               <div className="relative">
                 <input
                   type="text"

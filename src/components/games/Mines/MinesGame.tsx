@@ -50,8 +50,10 @@ export const MinesGame: React.FC<MinesGameProps> = ({ balance, setBalance, socke
     revealTile,
     cashout,
     isCashingOut,
-    gameResult
+    gameResult,
+    isProcessing,
   } = useMines(balance, setBalance, socket);
+
 
   const [history, setHistory] = useState<any[]>([]);
   const [sessionNet, setSessionNet] = useState(0);
@@ -77,7 +79,7 @@ export const MinesGame: React.FC<MinesGameProps> = ({ balance, setBalance, socke
     <div className="flex-1 flex flex-col lg:flex-row gap-6 p-4 md:p-8 max-w-7xl mx-auto w-full overflow-y-auto custom-scrollbar">
       {/* Sidebar Controls */}
       <div className="w-full lg:w-80 flex flex-col gap-4">
-        <div className="bg-[#1a1c23] border border-white/5 rounded-[2rem] p-6 shadow-2xl space-y-6">
+        <div className="bg-[#1a1c23] border border-white/5 rounded-[2rem] p-4 lg:p-6 shadow-2xl space-y-3 lg:space-y-6">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <div className="p-2 bg-amber-500/10 rounded-lg">
@@ -98,7 +100,7 @@ export const MinesGame: React.FC<MinesGameProps> = ({ balance, setBalance, socke
                 <Coins className="w-4 h-4 text-white/40 group-focus-within:text-amber-500 transition-colors" />
               </div>
               <input 
-                type="number"
+                type="number" inputMode="decimal"
                 value={betAmount}
                 onChange={(e) => setBetAmount(Math.max(1, Number(e.target.value)))}
                 disabled={status === 'playing'}
@@ -108,14 +110,14 @@ export const MinesGame: React.FC<MinesGameProps> = ({ balance, setBalance, socke
                 <button 
                   onClick={() => setBetAmount(Math.max(1, Math.floor(betAmount / 2)))}
                   disabled={status === 'playing'}
-                  className="px-3 py-2 bg-white/5 hover:bg-white/10 rounded-xl text-[10px] font-black text-white/40 uppercase transition-colors disabled:opacity-50"
+                  className="px-3 py-2 min-h-[44px] bg-white/5 hover:bg-white/10 rounded-xl text-[10px] font-black text-white/40 uppercase transition-colors disabled:opacity-50"
                 >
                   1/2
                 </button>
-                <button 
+                <button
                   onClick={() => setBetAmount(betAmount * 2)}
                   disabled={status === 'playing'}
-                  className="px-3 py-2 bg-white/5 hover:bg-white/10 rounded-xl text-[10px] font-black text-white/40 uppercase transition-colors disabled:opacity-50"
+                  className="px-3 py-2 min-h-[44px] bg-white/5 hover:bg-white/10 rounded-xl text-[10px] font-black text-white/40 uppercase transition-colors disabled:opacity-50"
                 >
                   2x
                 </button>
@@ -147,7 +149,7 @@ export const MinesGame: React.FC<MinesGameProps> = ({ balance, setBalance, socke
               ))}
               <div className="relative">
                 <input 
-                  type="number"
+                  type="number" inputMode="decimal"
                   min="1"
                   max="24"
                   value={mineCount}
@@ -173,7 +175,7 @@ export const MinesGame: React.FC<MinesGameProps> = ({ balance, setBalance, socke
           </div>
 
           {/* Action Buttons */}
-          <div className="pt-4 space-y-3">
+          <div className="pt-2 lg:pt-4 space-y-3">
             {status === 'playing' ? (
               <button 
                 onClick={() => cashout()}
@@ -197,7 +199,7 @@ export const MinesGame: React.FC<MinesGameProps> = ({ balance, setBalance, socke
         </div>
 
         {/* Game Stats */}
-        <div className="bg-[#1a1c23] border border-white/5 rounded-[2rem] p-6 shadow-2xl space-y-4">
+        <div className="hidden lg:block bg-[#1a1c23] border border-white/5 rounded-[2rem] p-6 shadow-2xl space-y-4">
           <div className="flex items-center gap-2">
             <div className="p-2 bg-emerald-500/10 rounded-lg">
               <Activity className="w-4 h-4 text-emerald-500" />
@@ -221,17 +223,18 @@ export const MinesGame: React.FC<MinesGameProps> = ({ balance, setBalance, socke
 
       {/* Main Game Area */}
       <div className="flex-1 flex flex-col gap-6">
-        <div className="flex-1 bg-[#1a1c23] border border-white/5 rounded-[2.5rem] p-8 md:p-12 shadow-2xl flex flex-col items-center justify-center relative overflow-hidden">
+        <div className="flex-1 bg-[#1a1c23] border border-white/5 rounded-[2.5rem] p-4 md:p-8 lg:p-12 shadow-2xl flex flex-col items-center justify-center relative overflow-hidden">
           {/* Background Elements */}
           <div className="absolute top-0 left-0 w-full h-full pointer-events-none">
             <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-amber-500/5 rounded-full blur-[120px]" />
             <div className="absolute top-0 left-0 w-full h-full bg-[radial-gradient(circle_at_center,transparent_0%,#1a1c23_70%)]" />
           </div>
 
-          <MinesGrid 
+          <MinesGrid
             tiles={tiles}
             status={status}
             onReveal={revealTile}
+            isProcessing={isProcessing}
           />
 
           {/* Game Status Overlay */}
@@ -260,7 +263,7 @@ export const MinesGame: React.FC<MinesGameProps> = ({ balance, setBalance, socke
         </div>
 
         {/* History Section */}
-        <div className="bg-[#1a1c23] border border-white/5 rounded-[2rem] p-6 shadow-2xl">
+        <div className="hidden lg:block bg-[#1a1c23] border border-white/5 rounded-[2rem] p-6 shadow-2xl">
           <div className="flex items-center justify-between mb-6">
             <div className="flex items-center gap-2">
               <div className="p-2 bg-amber-500/10 rounded-lg">

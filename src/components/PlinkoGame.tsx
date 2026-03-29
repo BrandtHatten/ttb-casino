@@ -438,7 +438,7 @@ export const PlinkoGame: React.FC<PlinkoGameProps> = ({ socket, user }) => {
           <div className="relative group">
             <Coins className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-amber-500 group-focus-within:text-amber-400 transition-colors" />
             <input 
-              type="number"
+              type="number" inputMode="decimal"
               value={betAmount}
               onChange={(e) => setBetAmount(e.target.value)}
               className="w-full h-12 bg-[#0f1923] border border-white/5 rounded-xl pl-12 pr-4 text-sm font-mono text-white focus:outline-none focus:border-blue-500/30 transition-colors"
@@ -579,7 +579,7 @@ export const PlinkoGame: React.FC<PlinkoGameProps> = ({ socket, user }) => {
         </div>
 
         {/* Game Canvas */}
-        <div className="relative w-full max-w-[800px] aspect-[4/3] bg-[#0f1923]/40 backdrop-blur-sm rounded-[2.5rem] border border-white/5 shadow-2xl overflow-hidden flex items-center justify-center">
+        <div className="relative w-full max-w-[360px] sm:max-w-[500px] md:max-w-[650px] lg:max-w-[800px] aspect-[4/3] bg-[#0f1923]/40 backdrop-blur-sm rounded-2xl md:rounded-[2.5rem] border border-white/5 shadow-2xl overflow-hidden flex items-center justify-center">
           <canvas 
             ref={canvasRef}
             width={800}

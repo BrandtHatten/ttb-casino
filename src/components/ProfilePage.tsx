@@ -139,6 +139,23 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({
                 <span className="text-xs font-black uppercase tracking-widest">{rank.name}</span>
               </div>
             </div>
+            <div className="w-full max-w-sm space-y-1 mt-2">
+              <div className="flex justify-between text-[9px] font-black uppercase tracking-widest text-white/20">
+                <span>{rank.name}</span>
+                <span>{nextRank ? nextRank.name : 'Max Rank'}</span>
+              </div>
+              <div className="h-1.5 bg-white/5 rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-gradient-to-r from-amber-600 to-amber-400 rounded-full transition-all duration-700"
+                  style={{ width: `${Math.min(100, Math.max(0, progress))}%` }}
+                />
+              </div>
+              {nextRank && (
+                <p className="text-[9px] font-bold text-white/20 text-right">
+                  ${Math.max(0, nextRank.wagered - (user.total_wagered || 0)).toLocaleString()} to {nextRank.name}
+                </p>
+              )}
+            </div>
           </div>
 
           <div className="flex flex-col items-end gap-1">
@@ -227,7 +244,7 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({
                 <div className="relative">
                   <Coins className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-amber-500" />
                   <input 
-                    type="number"
+                    type="number" inputMode="decimal"
                     value={giftAmount}
                     onChange={(e) => setGiftAmount(e.target.value)}
                     className="w-full bg-white/5 border border-white/10 rounded-xl pl-10 pr-4 py-3 text-sm text-white focus:outline-none focus:border-amber-500/50 transition-colors font-mono"

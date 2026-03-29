@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useRef } from 'react';
+import React, { useState, useCallback } from 'react';
 
 export type RiskLevel = 'low' | 'medium' | 'high';
 
@@ -42,40 +42,51 @@ const SEGMENTS: Record<RiskLevel, WheelSegment[]> = {
   ],
 };
 
-export const useWheel = (balance: number, setBalance: React.Dispatch<React.SetStateAction<number>>) => {
+export const useWheel = (
+  balance: number,
+  setBalance: React.Dispatch<React.SetStateAction<number>>,
+  turboMode: boolean = false,
+  socket: any = null
+) => {
   const [betAmount, setBetAmount] = useState(10);
   const [risk, setRisk] = useState<RiskLevel>('medium');
   const [isSpinning, setIsSpinning] = useState(false);
   const [rotation, setRotation] = useState(0);
   const [lastResult, setLastResult] = useState<number | null>(null);
-  
-  const spin = useCallback(() => {
-    if (isSpinning || balance < betAmount) return;
 
-    setBalance(balance - betAmount);
+  const spinDuration = turboMode ? 500 : 4000;
+
+  const spin = useCallback(async () => {
+    if (isSpinning || balance < betAmount || !socket) return;
+
     setIsSpinning(true);
     setLastResult(null);
 
+    const result = await new Promise<{ segmentIndex: number; multiplier: number; winAmount: number; won: boolean } | null>((resolve) => {
+      const onOutcome = (data: any) => { socket.off('error', onError); resolve(data); };
+      const onError = () => { socket.off('wheel:outcome', onOutcome); resolve(null); };
+      socket.once('wheel:outcome', onOutcome);
+      socket.once('error', onError);
+      socket.emit('wheel:spin', { betAmount, risk });
+    });
+
+    if (!result) {
+      setIsSpinning(false);
+      return;
+    }
+
     const segments = SEGMENTS[risk];
-    const segmentIndex = Math.floor(Math.random() * segments.length);
     const segmentAngle = 360 / segments.length;
-    
-    // Calculate new rotation
-    // Add 5-10 full spins + the target segment angle
     const extraSpins = (5 + Math.floor(Math.random() * 5)) * 360;
-    const targetAngle = extraSpins + (360 - (segmentIndex * segmentAngle + segmentAngle / 2));
-    
+    const targetAngle = extraSpins + (360 - (result.segmentIndex * segmentAngle + segmentAngle / 2));
     setRotation(prev => prev + targetAngle - (prev % 360));
 
     setTimeout(() => {
       setIsSpinning(false);
-      const result = segments[segmentIndex].multiplier;
-      setLastResult(result);
-      if (result > 0) {
-        setBalance(prev => prev + betAmount * result);
-      }
-    }, 4000); // Match CSS transition duration
-  }, [isSpinning, balance, betAmount, risk, setBalance]);
+      setLastResult(result.multiplier);
+      socket.emit('activity:reveal');
+    }, spinDuration);
+  }, [isSpinning, balance, betAmount, risk, socket, spinDuration]);
 
   return {
     betAmount,
@@ -87,5 +98,6 @@ export const useWheel = (balance: number, setBalance: React.Dispatch<React.SetSt
     rotation,
     lastResult,
     segments: SEGMENTS[risk],
+    spinDuration,
   };
 };
