@@ -760,7 +760,7 @@ export default function App() {
   }, [showFreeSpinSummary, isAutoSpinning]);
 
   return (
-    <div className="h-[100svh] flex flex-col font-sans relative overflow-hidden bg-[#0a0a0a]">
+    <div className="min-h-[100dvh] flex flex-col font-sans relative bg-[#0a0a0a]">
       {/* Auth Overlay */}
       <AnimatePresence>
         {!token && (
