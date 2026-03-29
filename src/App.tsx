@@ -66,6 +66,9 @@ const RouletteGame = lazy(() => import('./components/RouletteGame'));
 const MinesGame = lazy(() => import('./components/games/Mines/MinesGame').then(m => ({ default: m.MinesGame })));
 const WarGame = lazy(() => import('./components/games/War/WarGame').then(m => ({ default: m.WarGame })));
 const WheelGame = lazy(() => import('./components/games/Wheel/WheelGame').then(m => ({ default: m.WheelGame })));
+const HistoryPage = lazy(() => import('./components/HistoryPage').then(m => ({ default: m.HistoryPage })));
+import { ChallengesPanel } from './components/ChallengesPanel';
+import { ProvablyFairModal } from './components/ProvablyFairModal';
 
 const SYMBOL_ICONS: Record<SymbolType, any> = {
   HEART: Heart,
@@ -84,7 +87,7 @@ const SYMBOL_ICONS: Record<SymbolType, any> = {
 export default function App() {
   const navigate = useNavigate();
   const location = useLocation();
-  const pathToView: Record<string, 'home' | 'game' | 'crash' | 'plinko' | 'cases' | 'blackjack' | 'roulette' | 'mines' | 'war' | 'wheel' | 'profile' | 'settings' | 'admin'> = {
+  const pathToView: Record<string, 'home' | 'game' | 'crash' | 'plinko' | 'cases' | 'blackjack' | 'roulette' | 'mines' | 'war' | 'wheel' | 'profile' | 'settings' | 'admin' | 'history'> = {
     '/': 'home',
     '/slots': 'game',
     '/crash': 'crash',
@@ -98,12 +101,14 @@ export default function App() {
     '/profile': 'profile',
     '/settings': 'settings',
     '/admin': 'admin',
+    '/history': 'history',
   };
   const viewToPath: Record<string, string> = {
     home: '/', game: '/slots', crash: '/crash', plinko: '/plinko',
     cases: '/cases', blackjack: '/blackjack', roulette: '/roulette',
     mines: '/mines', war: '/war', wheel: '/wheel',
     profile: '/profile', settings: '/settings', admin: '/admin',
+    history: '/history',
   };
   const publicProfileMatch = location.pathname.match(/^\/profile\/(.+)$/);
   const view = publicProfileMatch ? 'public_profile' : (pathToView[location.pathname] ?? 'home');
@@ -217,7 +222,6 @@ export default function App() {
     setSocket(newSocket);
 
     newSocket.on('connect', () => {
-      console.log('Connected to server');
     });
 
     newSocket.on('server:version', (version: string) => {
@@ -246,8 +250,9 @@ export default function App() {
     newSocket.on('activity:new', (activity) => { if (activity.type === 'win' || activity.type === 'jackpot') setRecentActivity(prev => [activity, ...prev.slice(0, 19)]); });
     newSocket.on('leaderboards_update', (data) => setLeaderboards(data));
     newSocket.on('user_achievements', (data) => setUserAchievements(data));
-    newSocket.on('achievement_unlocked', (achievement) => {
-      setUnlockedAchievement(achievement);
+    newSocket.on('achievement_unlocked', ({ id }: { id: string }) => {
+      const full = ACHIEVEMENTS.find(a => a.id === id) || null;
+      setUnlockedAchievement(full);
       setTimeout(() => setUnlockedAchievement(null), 5000);
     });
     newSocket.on('jackpot:winner', ({ username, amount }) => {
@@ -262,8 +267,7 @@ export default function App() {
     });
 
     newSocket.on('session:kicked', () => {
-      handleLogout();
-      alert('Logged in from another location');
+      setShowKickedModal(true);
     });
 
     newSocket.on('error', (msg) => alert(msg));
@@ -275,6 +279,11 @@ export default function App() {
 
     newSocket.on('site_reset', () => {
       window.location.reload();
+    });
+
+    newSocket.on('slots:free_spins_restored', (data: { count: number; betAmount: number }) => {
+      setFreeSpins(data.count);
+      setIsFreeSpinMode(true);
     });
 
     return () => {
@@ -312,6 +321,8 @@ export default function App() {
   const [showInsufficientCredits, setShowInsufficientCredits] = useState(false);
   const [isBetError, setIsBetError] = useState(false);
   const [leaderboardTab, setLeaderboardTab] = useState<'allTime' | 'thisWeek'>('allTime');
+  const [showProvablyFair, setShowProvablyFair] = useState(false);
+  const [provablyFairRounds, setProvablyFairRounds] = useState<any[]>([]);
   const dailyClaimed = userStats ? userStats.daily_reward_date === new Date().toISOString().split('T')[0] : false;
   const weeklyClaimed = userStats?.weekly_reward_date
     ? new Date(userStats.weekly_reward_date) > new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)
@@ -429,6 +440,7 @@ export default function App() {
   };
 
   const [showJackpotModal, setShowJackpotModal] = useState(false);
+  const [showKickedModal, setShowKickedModal] = useState(false);
   const [broadcast, setBroadcast] = useState<{ message: string, type: string } | null>(null);
   const [isAutoSpinning, setIsAutoSpinning] = useState(false);
   const [isTurbo, setIsTurbo] = useState(false);
@@ -437,6 +449,8 @@ export default function App() {
   const [history, setHistory] = useState<{ id: string, amount: number, type: 'normal' | 'free' }[]>([]);
 
   const spinRef = useRef(false);
+  const pendingServerWinRef = useRef<number | null>(null);
+  const pendingServerFreeSpinsRef = useRef<number | null>(null);
 
   const checkWins = useCallback((currentGrid: GameSymbol[][]) => {
     const counts: Record<string, GridPosition[]> = {};
@@ -509,59 +523,55 @@ export default function App() {
     if (wins.length === 0) {
       // End of tumble sequence
       if (currentTumbleTotal > 0) {
-        let finalWin = currentTumbleTotal;
+        let displayWin = currentTumbleTotal;
         if (multipliers.length > 0) {
           const totalMult = multipliers.reduce((a, b) => a + b, 0);
-          finalWin *= totalMult;
+          displayWin *= totalMult;
           setCurrentMultiplier(totalMult);
-          
+
           // Visual feedback for multiplier application
           setIsMultiplying(true);
-          setWinAmount(finalWin);
+          setWinAmount(displayWin);
           setTimeout(() => setIsMultiplying(false), 1000);
         }
-        
-        console.log(`Tumble sequence ended. Adding ${finalWin} to balance.`);
-        setSpinWin(prev => prev + finalWin);
-        setBalance(prev => Math.round((prev + finalWin) * 100) / 100);
-        setSessionNet(prev => Math.round((prev + finalWin) * 100) / 100);
 
-        // Emit reveal to server to broadcast win
-        if (socket) {
-          socket.emit('wins:reveal', { 
-            amount: finalWin,
-            betAmount: isFreeSpinMode ? 0 : bet
-          });
-        }
-        
+        // Server is authoritative for actual win amount; use it for session net
+        const serverWin = pendingServerWinRef.current ?? displayWin;
+        pendingServerWinRef.current = null;
+
+        setSpinWin(prev => prev + displayWin);
+        // Balance is updated via user_data pushed by server — do NOT setBalance here
+        setSessionNet(prev => Math.round((prev + serverWin) * 100) / 100);
+
         if (isFreeSpinMode || freeSpinsTriggered) {
-          setTotalFreeSpinWin(prev => prev + finalWin);
-          setLastSpinTotal(finalWin);
+          setTotalFreeSpinWin(prev => prev + displayWin);
+          setLastSpinTotal(displayWin);
           setShowLastSpinTotal(true);
         }
 
         // Add to history
-        setHistory(prev => [{ id: generateId(), amount: finalWin, type: isFreeSpinMode ? 'free' : 'normal' }, ...prev].slice(0, 5));
-        
-        if (finalWin >= bet * 20) {
+        setHistory(prev => [{ id: generateId(), amount: displayWin, type: isFreeSpinMode ? 'free' : 'normal' }, ...prev].slice(0, 5));
+
+        if (displayWin >= bet * 20) {
           confetti({
             particleCount: 100,
             spread: 70,
             origin: { y: 0.6 }
           });
         }
+      } else {
+        // No win — clear pending server win ref
+        pendingServerWinRef.current = null;
       }
 
       if (freeSpinsTriggered && !isFreeSpinMode) {
         setIsFreeSpinMode(true);
       }
 
-      // Emit reveal even for 0 wins to record the loss
-      if (currentTumbleTotal === 0 && socket && !isFreeSpinMode) {
-        socket.emit('wins:reveal', { 
-          amount: 0,
-          betAmount: bet
-        });
+      // Apply server's authoritative free spin count
+      if (pendingServerFreeSpinsRef.current !== null) {
+        setFreeSpins(pendingServerFreeSpinsRef.current);
+        pendingServerFreeSpinsRef.current = null;
       }
 
       setIsSpinning(false);
@@ -584,8 +594,7 @@ export default function App() {
       setTotalScatterWin(prev => prev + scatterWin.payout);
       
       if (!isFreeSpinMode && scatterWin.count >= 4) {
-        const initialSpins = 10 + (scatterWin.count - 4) * 5;
-        setFreeSpins(prev => prev + initialSpins);
+        // Free spin count is set by server via pendingServerFreeSpinsRef — just trigger UI
         triggered = true;
         confetti({
           particleCount: 150,
@@ -594,8 +603,7 @@ export default function App() {
           colors: ['#ff00ff', '#00ffff', '#ffff00']
         });
       } else if (isFreeSpinMode && scatterWin.count >= 3) {
-        const extraSpins = 5 + (scatterWin.count - 3) * 5;
-        setFreeSpins(prev => prev + extraSpins);
+        // Extra spins added by server
         confetti({
           particleCount: 50,
           spread: 40,
@@ -635,7 +643,7 @@ export default function App() {
   }, [checkWins, bet, isFreeSpinMode, isTurbo, socket]);
 
   const spin = async () => {
-    if (isSpinning) return;
+    if (isSpinning || !socket) return;
 
     if (balance < bet && !isFreeSpinMode) {
       setShowInsufficientCredits(true);
@@ -653,27 +661,27 @@ export default function App() {
     setTotalScattersOnGrid(0);
     setShowLastSpinTotal(false);
     setLastSpinTotal(0);
-    
+
     if (!isFreeSpinMode) {
       setBalance(prev => Math.round((prev - bet) * 100) / 100);
       setSessionNet(prev => Math.round((prev - bet) * 100) / 100);
       setTotalScatterWin(0);
       setTotalFreeSpinWin(0);
       setShowFreeSpinSummary(false);
-
-      // Emit bet to server
-      if (socket) {
-        socket.emit('slots:spin', {
-          betAmount: bet
-        });
-      }
-    } else {
-      setFreeSpins(prev => prev - 1);
     }
 
-    const newGrid = generateInitialGrid(isFreeSpinMode);
-    setGrid(newGrid);
+    // Wait for server to generate the outcome
+    const result = await new Promise<any>(resolve => {
+      socket.once('slots:result', resolve);
+      socket.emit('slots:spin', { betAmount: isFreeSpinMode ? 0 : bet });
+    });
 
+    // Store server's authoritative win and free spin count for handleTumble
+    pendingServerWinRef.current = result.totalWin;
+    pendingServerFreeSpinsRef.current = result.remainingFreeSpins;
+
+    const newGrid = result.grid;
+    setGrid(newGrid);
     setTimeout(() => handleTumble(newGrid), isTurbo ? 200 : 500);
   };
 
@@ -686,19 +694,12 @@ export default function App() {
     setShowBuyConfirm(true);
   };
 
-  const confirmBuyFeature = () => {
+  const confirmBuyFeature = async () => {
+    if (!socket) return;
     const cost = bet * 100;
     setShowBuyConfirm(false);
     setBalance(prev => Math.round((prev - cost) * 100) / 100);
     setSessionNet(prev => Math.round((prev - cost) * 100) / 100);
-    
-    // Emit bet to server
-    if (socket) {
-      socket.emit('slots:spin', {
-        betAmount: cost
-      });
-    }
-
     setIsSpinning(true);
     setWinAmount(0);
     setSpinWin(0);
@@ -713,15 +714,23 @@ export default function App() {
     setShowLastSpinTotal(false);
     setLastSpinTotal(0);
 
-    const newGrid = generateInitialGrid(false, 4);
-    setGrid(newGrid);
-
     confetti({
       particleCount: 200,
       spread: 100,
       origin: { y: 0.5 }
     });
 
+    // Wait for server to generate feature buy outcome (guaranteed 4 scatters)
+    const result = await new Promise<any>(resolve => {
+      socket.once('slots:result', resolve);
+      socket.emit('slots:spin', { betAmount: cost, featureBuy: true });
+    });
+
+    pendingServerWinRef.current = result.totalWin;
+    pendingServerFreeSpinsRef.current = result.remainingFreeSpins;
+
+    const newGrid = result.grid;
+    setGrid(newGrid);
     setTimeout(() => handleTumble(newGrid), isTurbo ? 200 : 500);
   };
 
@@ -751,7 +760,7 @@ export default function App() {
   }, [showFreeSpinSummary, isAutoSpinning]);
 
   return (
-    <div className="h-[100dvh] flex flex-col font-sans relative overflow-hidden bg-[#0a0a0a]">
+    <div className="h-[100svh] flex flex-col font-sans relative overflow-hidden bg-[#0a0a0a]">
       {/* Auth Overlay */}
       <AnimatePresence>
         {!token && (
@@ -929,12 +938,19 @@ export default function App() {
                           <User className="w-4 h-4" />
                           Profile
                         </button>
-                        <button 
+                        <button
                           onClick={() => { setView('settings'); setIsProfileDropdownOpen(false); }}
                           className="w-full flex items-center gap-3 px-4 py-3 text-sm font-bold text-white/60 hover:text-white hover:bg-white/5 transition-colors"
                         >
                           <Settings className="w-4 h-4" />
                           Settings
+                        </button>
+                        <button
+                          onClick={() => { setView('history'); setIsProfileDropdownOpen(false); }}
+                          className="w-full flex items-center gap-3 px-4 py-3 text-sm font-bold text-white/60 hover:text-white hover:bg-white/5 transition-colors"
+                        >
+                          <HistoryIcon className="w-4 h-4" />
+                          History
                         </button>
                         <div className="h-px bg-white/5 my-2" />
                         <button 
@@ -955,6 +971,20 @@ export default function App() {
               <Coins className="w-3 h-3 md:w-4 md:h-4 text-amber-500" />
               <span className="font-mono font-bold text-[10px] md:text-sm text-amber-500">${balance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
             </div>
+            {userStats && (
+              <button onClick={async () => {
+                const tok = localStorage.getItem('casino_token');
+                if (!tok) return;
+                try {
+                  const res = await fetch('/api/provably_fair/user/recent', { headers: { Authorization: `Bearer ${tok}` } });
+                  const data = await res.json();
+                  setProvablyFairRounds(Array.isArray(data) ? data : []);
+                  setShowProvablyFair(true);
+                } catch {}
+              }} className="w-8 h-8 md:w-9 md:h-9 rounded-xl bg-white/5 border border-white/10 flex items-center justify-center text-emerald-400/60 hover:text-emerald-400 hover:bg-emerald-500/10 transition-all order-1 md:order-2">
+                <Shield className="w-3.5 h-3.5 md:w-4 md:h-4" />
+              </button>
+            )}
             
             <button 
               className="xl:hidden p-2 text-white relative order-2 md:order-3 mr-2 md:mr-0"
@@ -1005,6 +1035,7 @@ export default function App() {
             <h3 className="text-xs font-black uppercase tracking-widest text-white">Recent Activity</h3>
           </div>
           <div className="flex-1 overflow-y-auto p-4 space-y-4 custom-scrollbar">
+            <ChallengesPanel socket={socket} />
             <AnimatePresence initial={false}>
               {recentActivity.map((activity, i) => (
                 <motion.div
@@ -1056,6 +1087,8 @@ export default function App() {
             userAchievements={userAchievements}
           />
           )
+        ) : view === 'history' && token ? (
+          <HistoryPage token={token} />
         ) : view === 'admin' ? (
           <AdminPanel token={token || ''} />
         ) : view === 'settings' ? (
@@ -1926,6 +1959,38 @@ export default function App() {
 
       {/* Progressive Jackpot Info Modal */}
       <AnimatePresence>
+        {showKickedModal && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 flex items-center justify-center z-[200] px-4 bg-black/90 backdrop-blur-md"
+          >
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0, y: 20 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.9, opacity: 0, y: 20 }}
+              className="bg-[#1a1c23] border border-red-500/30 p-8 rounded-[2rem] shadow-2xl max-w-sm w-full text-center space-y-6"
+            >
+              <div className="w-16 h-16 bg-red-500/10 rounded-full flex items-center justify-center mx-auto border border-red-500/20">
+                <LogOut className="w-8 h-8 text-red-400" />
+              </div>
+              <div className="space-y-2">
+                <h2 className="text-xl font-black text-white uppercase tracking-tight">Session Ended</h2>
+                <p className="text-white/50 text-sm">Your account was logged in from another device. Only one active session is allowed at a time.</p>
+              </div>
+              <button
+                onClick={() => { setShowKickedModal(false); handleLogout(); }}
+                className="w-full py-4 bg-red-500 hover:bg-red-400 text-white font-black rounded-2xl transition-all uppercase tracking-wider"
+              >
+                Back to Login
+              </button>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
         {showJackpotModal && (
           <motion.div
             initial={{ opacity: 0 }}
@@ -1994,6 +2059,29 @@ export default function App() {
                   Got it
                 </button>
               </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {showProvablyFair && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 flex items-center justify-center z-[120] px-4 bg-black/80 backdrop-blur-md"
+            onClick={() => setShowProvablyFair(false)}
+          >
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0, y: 20 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.9, opacity: 0, y: 20 }}
+              transition={{ type: 'spring', damping: 25, stiffness: 300 }}
+              onClick={e => e.stopPropagation()}
+              className="w-full max-w-2xl"
+            >
+              <ProvablyFairModal rounds={provablyFairRounds} onClose={() => setShowProvablyFair(false)} />
             </motion.div>
           </motion.div>
         )}
