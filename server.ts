@@ -522,8 +522,8 @@ const SERVER_VERSION = Date.now().toString();
 const MAX_BET = 10_000_000; // $100,000 in cents
 const WHEEL_SEGMENTS: Record<string, number[]> = {
   low:    [1.2, 1.5, 1.2, 0, 1.2, 1.5, 1.2, 0, 1.2, 0.5],                          // EV = 9.5/10 = 0.95 (5% house edge)
-  medium: [0, 1.5, 0, 2.5, 0, 0, 0, 1.5, 0, 3.7],                                  // EV = 9.2/10 = 0.92 (8% house edge)
-  high:   [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 3, 15],          // EV = 18/20 = 0.90 (10% house edge)
+  medium: [0, 1.5, 0, 2.5, 0, 1.5, 0, 3.7],                                         // EV = 9.2/8 = 1.15
+  high:   [0, 3, 0, 5],                                                              // EV = 8/4 = 2.0
 };
 const pfGenSeed = () => randomBytes(32).toString('hex');
 const pfHash = (seed: string) => createHash('sha256').update(seed).digest('hex');
