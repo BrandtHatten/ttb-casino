@@ -521,10 +521,28 @@ const ADMIN_USERNAME = process.env.ADMIN_USERNAME || "admin";
 const SERVER_VERSION = Date.now().toString();
 const MAX_BET = 10_000_000; // $100,000 in cents
 const WHEEL_SEGMENTS: Record<string, number[]> = {
-  low:    [1.2, 1.5, 1.2, 0, 1.2, 1.5, 1.2, 0, 1.2, 0.5],                          // EV = 9.5/10 = 0.95 (5% house edge)
-  medium: [0, 1.5, 0, 2.5, 0, 1.5, 0, 3.7],                                         // EV = 9.2/8 = 1.15
-  high:   [0, 3, 0, 5],                                                              // EV = 8/4 = 2.0
+  low:    [1.2, 1.5, 1.2, 0, 1.2, 1.5, 1.2, 0, 1.2, 0.5],
+  medium: [0, 1.5, 0, 2.5, 0, 1.5, 0, 3.7],
+  high:   [0, 3, 0, 5],
 };
+// Weights per segment — low is uniform; medium/high weight 0x higher to maintain house edge
+// Medium: EV = (2/20)*1.5 + (2/20)*2.5 + (2/20)*1.5 + (2/20)*3.7 = 0.92 (8% house edge)
+// High:   EV = (9/80)*3 + (9/80)*5 = 0.90 (10% house edge)
+const WHEEL_WEIGHTS: Record<string, number[]> = {
+  low:    [1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+  medium: [3, 2, 3, 2, 3, 2, 3, 2],
+  high:   [31, 9, 31, 9],
+};
+function weightedSegmentIndex(risk: string): number {
+  const weights = WHEEL_WEIGHTS[risk] ?? WHEEL_WEIGHTS.medium;
+  const total = weights.reduce((a, b) => a + b, 0);
+  let r = Math.random() * total;
+  for (let i = 0; i < weights.length; i++) {
+    r -= weights[i];
+    if (r <= 0) return i;
+  }
+  return weights.length - 1;
+}
 const pfGenSeed = () => randomBytes(32).toString('hex');
 const pfHash = (seed: string) => createHash('sha256').update(seed).digest('hex');
 const pfRoundId = () => randomBytes(16).toString('hex');
@@ -2423,7 +2441,7 @@ function generatePlinkoPath(rows: number) {
         if (!user || user.credits < betCents) return socket.emit("error", "Insufficient credits");
 
         const segments = WHEEL_SEGMENTS[risk] ?? WHEEL_SEGMENTS.medium;
-        const segmentIndex = Math.floor(Math.random() * segments.length);
+        const segmentIndex = weightedSegmentIndex(risk);
         const multiplier = segments[segmentIndex];
         const winAmountCents = Math.round(betCents * multiplier);
         const won = multiplier > 0;
